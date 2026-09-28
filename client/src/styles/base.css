@@ -1,0 +1,258 @@
+/* ───────────── Jetons de design WhatQuiz ───────────── */
+:root {
+  --brand: #5b3df5;
+  --brand-strong: #4527d9;
+  --brand-soft: #ece8ff;
+  --accent: #ff6b57;
+  --success: #12a150;
+  --success-soft: #e3f7eb;
+  --danger: #e5484d;
+  --danger-soft: #fdecec;
+  --warning: #f5a524;
+
+  --bg: #f6f5fb;
+  --surface: #ffffff;
+  --surface-2: #f1f0f7;
+  --border: #e3e1ee;
+  --text: #17142b;
+  --text-muted: #625e7a;
+  --focus: #5b3df5;
+  --overlay: rgb(15 12 35 / 55%);
+
+  /* Couleurs des réponses (toujours accompagnées d'une lettre, jamais seules). */
+  --choice-0: #f0533f;
+  --choice-1: #1b8fa3;
+  --choice-2: #d98a00;
+  --choice-3: #7048e8;
+  --choice-4: #2f6fe0;
+  --choice-5: #d6407f;
+
+  --stage-from: #1c1446;
+  --stage-to: #3a1f8f;
+
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 24px;
+  --shadow-sm: 0 1px 2px rgb(23 20 43 / 6%), 0 1px 3px rgb(23 20 43 / 6%);
+  --shadow: 0 4px 16px rgb(23 20 43 / 8%);
+  --shadow-lg: 0 18px 50px rgb(23 20 43 / 18%);
+  --touch: 48px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --brand: #8b74ff;
+    --brand-strong: #a594ff;
+    --brand-soft: #2a2350;
+    --success: #3fcf7f;
+    --success-soft: #16301f;
+    --danger: #ff6b70;
+    --danger-soft: #3a1c1f;
+    --bg: #100e1d;
+    --surface: #1a1730;
+    --surface-2: #231f3d;
+    --border: #322d52;
+    --text: #f2f0ff;
+    --text-muted: #a9a4c7;
+    --focus: #a594ff;
+    --shadow: 0 4px 16px rgb(0 0 0 / 35%);
+    --shadow-lg: 0 18px 50px rgb(0 0 0 / 55%);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --brand: #8b74ff;
+  --brand-strong: #a594ff;
+  --brand-soft: #2a2350;
+  --success: #3fcf7f;
+  --success-soft: #16301f;
+  --danger: #ff6b70;
+  --danger-soft: #3a1c1f;
+  --bg: #100e1d;
+  --surface: #1a1730;
+  --surface-2: #231f3d;
+  --border: #322d52;
+  --text: #f2f0ff;
+  --text-muted: #a9a4c7;
+  --focus: #a594ff;
+  --shadow: 0 4px 16px rgb(0 0 0 / 35%);
+  --shadow-lg: 0 18px 50px rgb(0 0 0 / 55%);
+  color-scheme: dark;
+}
+
+/* ───────────── Base ───────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--brand);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.small {
+  font-size: 0.875rem;
+}
+
+.container {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 3vw, 32px);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap, 16px);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap, 12px);
+  flex-wrap: wrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-in {
+  animation: fade-up 0.35s var(--ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

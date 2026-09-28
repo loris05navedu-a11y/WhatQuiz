@@ -16,6 +16,8 @@ export interface AppConfig {
   sessionDays: number;
   cookieSecure: boolean;
   maxPlayers: number;
+  /** Adresse à afficher aux élèves (ex. http://192.168.1.20:3000). Détectée automatiquement si vide. */
+  publicUrl: string | null;
   isProduction: boolean;
 }
 
@@ -28,6 +30,7 @@ export function loadConfig(): AppConfig {
     sessionDays: intFromEnv('SESSION_DAYS', 14),
     cookieSecure: process.env.COOKIE_SECURE === 'true',
     maxPlayers: intFromEnv('MAX_PLAYERS', 100),
+    publicUrl: process.env.PUBLIC_URL?.trim().replace(/\/+$/, '') || null,
     isProduction: process.env.NODE_ENV === 'production',
   };
 }

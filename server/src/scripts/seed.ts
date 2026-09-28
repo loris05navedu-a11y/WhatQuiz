@@ -15,6 +15,10 @@ if (!user) {
 } else {
   console.log(`Compte existant : ${EMAIL}`);
 }
-const quiz = services.quizzes.create(user.id, DEMO_QUIZ);
-console.log(`Quiz de démonstration ajouté (#${quiz.id}, ${quiz.questions.length} questions).`);
+if (services.quizzes.listByOwner(user.id).some((quiz) => quiz.title === DEMO_QUIZ.title)) {
+  console.log('Quiz de démonstration déjà présent.');
+} else {
+  const quiz = services.quizzes.create(user.id, DEMO_QUIZ);
+  console.log(`Quiz de démonstration ajouté (#${quiz.id}, ${quiz.questions.length} questions).`);
+}
 services.db.close();
