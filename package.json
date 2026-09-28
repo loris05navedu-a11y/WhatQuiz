@@ -1,0 +1,40 @@
+{
+  "name": "whatquiz",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WhatQuiz — plateforme de quiz interactive en temps réel (React + Express + Socket.IO + SQLite)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false --ignore ./client --ignore ./data server/src/index.ts",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "node scripts/build-server.mjs",
+    "start": "node --disable-warning=ExperimentalWarning dist/server/index.js",
+    "seed": "tsx server/src/scripts/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --disable-warning=ExperimentalWarning --import tsx --test \"server/tests/*.test.ts\""
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.20.4",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.25.0",
+    "qrcode-generator": "^2.0.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router": "^7.9.0",
+    "socket.io-client": "^4.8.3",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.6"
+  }
+}
