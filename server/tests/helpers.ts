@@ -21,6 +21,7 @@ export async function startTestServer(): Promise<TestServer> {
     sessionDays: 1,
     cookieSecure: false,
     maxPlayers: 100,
+    publicUrl: null,
     isProduction: false,
   });
   await new Promise<void>((resolve) => app.httpServer.listen(0, '127.0.0.1', resolve));

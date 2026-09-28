@@ -3,7 +3,7 @@ import path from 'node:path';
 import express from 'express';
 import { createApp } from './app';
 import { loadConfig } from './config';
-import { lanAddresses } from './routes/meta';
+import { joinBaseUrls } from './routes/meta';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -33,7 +33,9 @@ async function main(): Promise<void> {
     const mode = config.isProduction ? 'production' : 'développement';
     console.log(`\n  WhatQuiz démarré en mode ${mode}\n`);
     console.log(`  ➜ Sur cet appareil :   http://localhost:${config.port}`);
-    for (const ip of lanAddresses()) console.log(`  ➜ Sur le réseau local : http://${ip}:${config.port}`);
+    const urls = joinBaseUrls(config);
+    for (const url of urls) console.log(`  ➜ Pour les élèves :    ${url}`);
+    if (urls.length === 0) console.log('  ➜ Pour les élèves : utilisez l’adresse IP de cet appareil (voir README) ou définissez PUBLIC_URL.');
     console.log('');
   });
 
