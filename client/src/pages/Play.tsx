@@ -1,6 +1,6 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
-import { ERRORS } from '../../../shared/constants';
+import { ERRORS, REACTIONS } from '../../../shared/constants';
 import type { PlayerView, SubmittedAnswer } from '../../../shared/types';
 import { Button, LinkButton, Spinner } from '../components/Button';
 import { TextField } from '../components/Form';
@@ -143,6 +143,33 @@ function PlayerScreen({ view, game }: { view: PlayerView; game: Game }) {
       <main className="player-main">
         <PhaseContent view={view} game={game} />
       </main>
+      {view.phase !== 'question' && <ReactionBar onReact={game.react} />}
+    </div>
+  );
+}
+
+const REACTION_COOLDOWN_MS = 700;
+
+function ReactionBar({ onReact }: { onReact: (emoji: string) => void }) {
+  const [sent, setSent] = useState<string | null>(null);
+  const lastSent = useRef(0);
+
+  const send = (emoji: string) => {
+    const now = Date.now();
+    if (now - lastSent.current < REACTION_COOLDOWN_MS) return;
+    lastSent.current = now;
+    onReact(emoji);
+    setSent(emoji);
+    setTimeout(() => setSent((current) => (current === emoji ? null : current)), 400);
+  };
+
+  return (
+    <div className="reaction-bar" role="group" aria-label="Envoyer une réaction au professeur">
+      {REACTIONS.map((emoji) => (
+        <button key={emoji} type="button" className={`reaction-btn${sent === emoji ? ' is-sent' : ''}`} onClick={() => send(emoji)} aria-label={`Réagir ${emoji}`}>
+          {emoji}
+        </button>
+      ))}
     </div>
   );
 }

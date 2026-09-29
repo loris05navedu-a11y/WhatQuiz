@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useBlocker, useNavigate, useParams } from 'react-router';
 import { CATEGORIES, LIMITS, QUESTION_TYPE_LABELS, QUESTION_TYPES } from '../../../shared/constants';
 import { questionProblem, quizProblems } from '../../../shared/quizRules';
-import type { QuestionType } from '../../../shared/types';
+import type { QuestionInput, QuestionType } from '../../../shared/types';
 import { errorMessage } from '../api/client';
 import { quizApi } from '../api/endpoints';
 import { Button, PageLoader } from '../components/Button';
@@ -16,6 +16,7 @@ import { createQuestion, newKey, toDraft, toInput, type DraftQuestion, type Draf
 import { ImagePicker } from '../editor/ImagePicker';
 import { QuestionEditor, TYPE_ICONS } from '../editor/QuestionEditor';
 import { QuestionPreview } from '../editor/QuestionPreview';
+import { TextImportModal } from '../editor/TextImportModal';
 import { useTestLauncher } from '../lib/useTestLauncher';
 
 const SETTINGS = 'settings';
@@ -38,6 +39,7 @@ export function QuizEditorPage() {
   }, []);
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [importingText, setImportingText] = useState(false);
   const [preview, setPreview] = useState<DraftQuestion | null>(null);
 
   useEffect(() => {
@@ -92,6 +94,20 @@ export function QuizEditorPage() {
     edit((d) => ({ ...d, questions: [...d.questions.slice(0, insertAt), question, ...d.questions.slice(insertAt)] }));
     setSelected(question.key);
     setAdding(false);
+  };
+
+  const importQuestions = (imported: QuestionInput[]) => {
+    const created: DraftQuestion[] = imported.map((question) => ({ ...question, key: newKey() }));
+    // Un nouveau quiz commence par une question vide : on la remplace plutôt que de la garder.
+    const onlyBlank = questions.length === 1 && !questions[0].text.trim() && questions[0].answers.every((a) => !a.text.trim() || a.text === 'Vrai' || a.text === 'Faux');
+    const insertAt = selectedIndex >= 0 ? selectedIndex + 1 : questions.length;
+    edit((d) => ({
+      ...d,
+      questions: onlyBlank ? created : [...d.questions.slice(0, insertAt), ...created, ...d.questions.slice(insertAt)],
+    }));
+    setSelected(created[0].key);
+    setImportingText(false);
+    toast.success(`${created.length} question${created.length > 1 ? 's' : ''} ajoutée${created.length > 1 ? 's' : ''}`);
   };
 
   const moveQuestion = (delta: -1 | 1) => {
@@ -218,6 +234,9 @@ export function QuizEditorPage() {
           <Button variant="soft" icon="plus" block onClick={() => setAdding(true)} disabled={questions.length >= LIMITS.questionsPerQuiz}>
             Ajouter une question
           </Button>
+          <Button variant="ghost" icon="text" block onClick={() => setImportingText(true)} disabled={questions.length >= LIMITS.questionsPerQuiz}>
+            Importer depuis un texte
+          </Button>
         </nav>
 
         <section className="editor-panel card">
@@ -249,6 +268,14 @@ export function QuizEditorPage() {
             ))}
           </div>
         </Modal>
+      )}
+
+      {importingText && (
+        <TextImportModal
+          remaining={LIMITS.questionsPerQuiz - questions.length + (questions.length === 1 && !questions[0].text.trim() ? 1 : 0)}
+          onImport={importQuestions}
+          onClose={() => setImportingText(false)}
+        />
       )}
 
       {preview && (

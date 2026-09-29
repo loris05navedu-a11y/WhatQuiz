@@ -94,10 +94,14 @@ export function usePlayerGame(code: string, autoJoinNickname?: string) {
     [],
   );
 
+  const react = useCallback((emoji: string) => {
+    socketRef.current?.emit('game:react', { emoji });
+  }, []);
+
   const leave = useCallback(() => {
     socketRef.current?.emit('game:leave');
     writeStorage('session', storageKey(code), null);
   }, [code]);
 
-  return { status, view, error, connected, clockOffset, join, answer, leave };
+  return { status, view, error, connected, clockOffset, join, answer, react, leave };
 }

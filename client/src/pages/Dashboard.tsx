@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router';
+import { QUIZ_FILE_EXTENSION } from '../../../shared/quizFile';
 import type { DashboardStats, QuizSummary } from '../../../shared/types';
 import { errorMessage } from '../api/client';
 import { gameApi, quizApi, type ActiveGame } from '../api/endpoints';
@@ -11,6 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
 import { formatDateTime, formatNumber, formatPercent, formatRelative, plural } from '../lib/format';
+import { exportQuiz, importQuizFile } from '../lib/quizTransfer';
 import { useTestLauncher } from '../lib/useTestLauncher';
 
 type SortKey = 'updated' | 'title' | 'games';
@@ -32,6 +34,8 @@ export function DashboardPage() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [sort, setSort] = useState<SortKey>('updated');
+  const [importing, setImporting] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(
     () =>
@@ -75,8 +79,26 @@ export function DashboardPage() {
     }
   };
 
+  const importFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setImporting(true);
+    try {
+      const { quiz, lostImages } = await importQuizFile(file);
+      toast.success(`« ${quiz.title} » importé`);
+      if (lostImages > 0) toast.error(lostImages === 1 ? '1 image n’a pas pu être importée' : `${lostImages} images n’ont pas pu être importées`);
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Import impossible');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="stack" style={{ '--gap': '28px' } as CSSProperties}>
+      <input ref={fileInput} type="file" accept={`${QUIZ_FILE_EXTENSION},.json,application/json`} hidden onChange={importFile} />
       <div className="page-header">
         <div>
           <p className="muted">Bonjour {user?.displayName} 👋</p>
@@ -86,6 +108,9 @@ export function DashboardPage() {
           <LinkButton to="/join" icon="play">
             Rejoindre une partie
           </LinkButton>
+          <Button icon="fileUp" loading={importing} onClick={() => fileInput.current?.click()} title="Importer un quiz exporté depuis WhatQuiz">
+            Importer
+          </Button>
           <LinkButton to="/quizzes/new" variant="primary" icon="plus">
             Créer un quiz
           </LinkButton>
@@ -240,6 +265,15 @@ function QuizCard({ quiz, onChanged }: { quiz: QuizSummary; onChanged: () => voi
     }
   };
 
+  const exportFile = async () => {
+    try {
+      await exportQuiz(quiz.id);
+      toast.success('Quiz exporté');
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  };
+
   const remove = async () => {
     const ok = await confirm({
       title: 'Supprimer ce quiz ?',
@@ -295,6 +329,9 @@ function QuizCard({ quiz, onChanged }: { quiz: QuizSummary; onChanged: () => voi
             <>
               <button role="menuitem" className="menu-item" onClick={() => (close(), duplicate())}>
                 <Icon name="copy" /> Dupliquer
+              </button>
+              <button role="menuitem" className="menu-item" onClick={() => (close(), exportFile())}>
+                <Icon name="download" /> Exporter (fichier)
               </button>
               <button role="menuitem" className="menu-item danger" onClick={() => (close(), remove())}>
                 <Icon name="trash" /> Supprimer

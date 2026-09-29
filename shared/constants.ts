@@ -47,6 +47,10 @@ export const CATEGORIES = [
 
 export const GAME_CODE_LENGTH = 6;
 
+/** Réactions que les élèves peuvent envoyer à l'écran du professeur. */
+export const REACTIONS = ['👍', '👏', '😂', '😮', '🤔', '🔥'] as const;
+export type Reaction = (typeof REACTIONS)[number];
+
 /** Messages d'erreur visibles par les utilisateurs (jamais de détails techniques). */
 export const ERRORS = {
   generic: 'Une erreur est survenue',

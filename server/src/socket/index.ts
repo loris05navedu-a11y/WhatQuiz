@@ -1,7 +1,7 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server, type Socket } from 'socket.io';
 import { ZodError } from 'zod';
-import { ERRORS } from '../../../shared/constants';
+import { ERRORS, REACTIONS } from '../../../shared/constants';
 import type { AckResult, ClientToServerEvents, PublicUser, ServerToClientEvents } from '../../../shared/types';
 import { GameError } from '../game/errors';
 import { GameManager } from '../game/GameManager';
@@ -16,6 +16,7 @@ interface SocketData {
   player?: { code: string; playerId: string };
   hostCode?: string;
   joinLimiter: RateLimiter;
+  reactLimiter: RateLimiter;
 }
 
 type IoServer = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -67,6 +68,7 @@ export function createRealtime(httpServer: HttpServer, services: Services): { io
   io.on('connection', (socket: IoSocket) => {
     socket.data.user = userFromCookieHeader(services, socket.handshake.headers.cookie)?.user;
     socket.data.joinLimiter = new RateLimiter(15, 60_000);
+    socket.data.reactLimiter = new RateLimiter(6, 5_000);
 
     const currentPlayerRoom = (): GameRoom | undefined => {
       const player = socket.data.player;
@@ -100,6 +102,16 @@ export function createRealtime(httpServer: HttpServer, services: Services): { io
         return { ok: true };
       }),
     );
+
+    socket.on('game:react', (payload) => {
+      const room = currentPlayerRoom();
+      const player = socket.data.player && room?.players.get(socket.data.player.playerId);
+      if (!room || !player) return;
+      const emoji = typeof payload?.emoji === 'string' ? payload.emoji : '';
+      if (!(REACTIONS as readonly string[]).includes(emoji)) return;
+      if (!socket.data.reactLimiter.consume('react')) return;
+      io.to(hostRoom(room.code)).emit('host:reaction', { emoji, nickname: player.nickname });
+    });
 
     socket.on('game:leave', () => {
       currentPlayerRoom()?.leave(socket.id);

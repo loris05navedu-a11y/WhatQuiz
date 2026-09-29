@@ -236,6 +236,7 @@ export interface ClientToServerEvents {
   ) => void;
   'game:answer': (payload: { questionIndex: number; answer: SubmittedAnswer }, ack: (result: AckResult) => void) => void;
   'game:leave': () => void;
+  'game:react': (payload: { emoji: string }) => void;
   'host:join': (payload: { code: string }, ack: (result: AckResult) => void) => void;
   'host:action': (action: HostAction, ack: (result: AckResult) => void) => void;
 }
@@ -244,6 +245,7 @@ export interface ServerToClientEvents {
   'game:state': (view: PlayerView) => void;
   'host:state': (view: HostView) => void;
   'game:kicked': () => void;
+  'host:reaction': (payload: { emoji: string; nickname: string }) => void;
   'game:closed': (payload: { reason: string }) => void;
 }
 
