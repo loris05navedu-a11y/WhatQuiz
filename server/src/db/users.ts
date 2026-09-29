@@ -1,4 +1,4 @@
-import type { PublicUser, Role } from '../../../shared/types';
+import type { AdminUserRow, PublicUser, Role } from '../../../shared/types';
 import type { Database } from './database';
 
 interface UserRow {
@@ -15,13 +15,14 @@ export interface UserRecord extends PublicUser {
   passwordHash: string;
 }
 
-function toRecord(row: UserRow): UserRecord {
+function toRecord(row: UserRow, adminEmails: string[]): UserRecord {
   return {
     id: row.id,
     email: row.email,
     displayName: row.display_name,
     role: row.role,
     isDemo: row.is_demo === 1,
+    isAdmin: adminEmails.includes(row.email.toLowerCase()),
     createdAt: row.created_at,
     passwordHash: row.password_hash,
   };
@@ -32,16 +33,19 @@ export function toPublicUser({ passwordHash: _hash, ...user }: UserRecord): Publ
 }
 
 export class UserRepository {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly adminEmails: string[] = [],
+  ) {}
 
   findById(id: number): UserRecord | undefined {
     const row = this.db.get<UserRow>('SELECT * FROM users WHERE id = ?', id);
-    return row && toRecord(row);
+    return row && toRecord(row, this.adminEmails);
   }
 
   findByEmail(email: string): UserRecord | undefined {
     const row = this.db.get<UserRow>('SELECT * FROM users WHERE email = ?', email.trim());
-    return row && toRecord(row);
+    return row && toRecord(row, this.adminEmails);
   }
 
   create(input: { email: string; passwordHash: string; displayName: string; role: Role; isDemo?: boolean }): UserRecord {
@@ -54,6 +58,27 @@ export class UserRepository {
       input.isDemo ? 1 : 0,
     );
     return this.findById(lastInsertRowid)!;
+  }
+
+  listWithCounts(): AdminUserRow[] {
+    return this.db
+      .all<UserRow & { quiz_count: number; game_count: number }>(
+        `SELECT u.*,
+           (SELECT COUNT(*) FROM quizzes q WHERE q.owner_id = u.id) AS quiz_count,
+           (SELECT COUNT(*) FROM game_sessions g WHERE g.host_id = u.id AND g.status = 'ended') AS game_count
+         FROM users u ORDER BY u.created_at DESC`,
+      )
+      .map((row) => ({
+        id: row.id,
+        email: row.email,
+        displayName: row.display_name,
+        role: row.role,
+        isDemo: row.is_demo === 1,
+        isAdmin: this.adminEmails.includes(row.email.toLowerCase()),
+        createdAt: row.created_at,
+        quizCount: row.quiz_count,
+        gameCount: row.game_count,
+      }));
   }
 
   updateProfile(id: number, input: { email: string; displayName: string }): void {

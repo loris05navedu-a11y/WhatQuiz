@@ -5,6 +5,7 @@ import type { GameManager } from './game/GameManager';
 import { loadUser, requireJsonForMutations } from './http/auth';
 import { errorHandler, notFound } from './http/errors';
 import { securityHeaders } from './http/security';
+import { adminRoutes } from './routes/admin';
 import { accountRoutes, authRoutes } from './routes/auth';
 import { gameRoutes } from './routes/games';
 import { metaRoutes } from './routes/meta';
@@ -41,6 +42,7 @@ export function createApp(config: AppConfig): WhatQuizApp {
   api.use(loadUser(services));
   api.use('/auth', authRoutes(services));
   api.use('/account', accountRoutes(services));
+  api.use('/admin', adminRoutes(services));
   api.use('/quizzes', quizRoutes(services));
   api.use('/games', gameRoutes(services, manager));
   api.use('/uploads', uploadRoutes(services));
