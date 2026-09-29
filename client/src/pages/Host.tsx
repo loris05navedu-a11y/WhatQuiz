@@ -16,14 +16,16 @@ import { ChoiceTile } from '../game/ChoiceTile';
 import { Leaderboard, Podium } from '../game/Leaderboard';
 import { QuestionMeta, QuestionStatement } from '../game/QuestionView';
 import { Timer } from '../game/Timer';
-import { useHostGame } from '../game/useHostGame';
+import { useHostGame, type FloatingReaction } from '../game/useHostGame';
+import { readStorage, writeStorage } from '../lib/storage';
 import { formatNumber, formatPercent } from '../lib/format';
 
 type Act = (action: HostAction) => Promise<void>;
 
 export function HostPage() {
   const { code = '' } = useParams();
-  const { view, error, connected, clockOffset, act: rawAct } = useHostGame(code);
+  const { view, error, connected, clockOffset, act: rawAct, reactions } = useHostGame(code);
+  const [reactionsShown, setReactionsShown] = useState(() => readStorage('local', 'wq:reactions') !== 'off');
   const toast = useToast();
   const [busy, setBusy] = useState(false);
 
@@ -72,17 +74,48 @@ export function HostPage() {
           <Icon name="wifiOff" /> {ERRORS.connectionLost} — reconnexion…
         </div>
       )}
-      <HostHeader view={view} act={act} />
+      <HostHeader
+        view={view}
+        act={act}
+        reactionsShown={reactionsShown}
+        onToggleReactions={() =>
+          setReactionsShown((shown) => {
+            writeStorage('local', 'wq:reactions', shown ? 'off' : null);
+            return !shown;
+          })
+        }
+      />
       <main className="host-main">
         <HostPhase view={view} act={act} busy={busy} clockOffset={clockOffset} />
       </main>
+      {reactionsShown && <ReactionLayer reactions={reactions} />}
     </div>
   );
 }
 
 /* ───────────── En-tête et panneaux ───────────── */
 
-function HostHeader({ view, act }: { view: HostView; act: Act }) {
+function ReactionLayer({ reactions }: { reactions: FloatingReaction[] }) {
+  return (
+    <div className="reaction-layer" aria-hidden="true">
+      {reactions.map((reaction) => (
+        <span key={reaction.id} className="reaction-float" style={{ left: `${reaction.left}%` }}>
+          <span className="reaction-emoji">{reaction.emoji}</span>
+          <span className="reaction-name">{reaction.nickname}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+interface HostHeaderProps {
+  view: HostView;
+  act: Act;
+  reactionsShown: boolean;
+  onToggleReactions: () => void;
+}
+
+function HostHeader({ view, act, reactionsShown, onToggleReactions }: HostHeaderProps) {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const [panel, setPanel] = useState<'players' | 'settings' | null>(null);
@@ -125,6 +158,15 @@ function HostHeader({ view, act }: { view: HostView; act: Act }) {
         {view.players.length}
       </Button>
       <Button variant="ghost" className="btn-inverse" icon="sliders" onClick={() => setPanel('settings')} aria-label="Paramètres de la partie" />
+      <Button
+        variant="ghost"
+        className="btn-inverse"
+        icon={reactionsShown ? 'smile' : 'smileOff'}
+        onClick={onToggleReactions}
+        aria-pressed={reactionsShown}
+        aria-label={reactionsShown ? 'Masquer les réactions des élèves' : 'Afficher les réactions des élèves'}
+        title={reactionsShown ? 'Masquer les réactions des élèves' : 'Afficher les réactions des élèves'}
+      />
       <Button variant="ghost" className="btn-inverse hide-mobile" icon="maximize" onClick={toggleFullscreen} aria-label="Plein écran" />
       <Button variant="ghost" className="btn-inverse" icon="x" onClick={leave} aria-label="Quitter l’écran de la partie" />
       {panel === 'players' && <PlayersPanel view={view} act={act} onClose={() => setPanel(null)} />}

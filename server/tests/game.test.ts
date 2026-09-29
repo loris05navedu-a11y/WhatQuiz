@@ -83,6 +83,21 @@ describe('partie en direct', () => {
     assert.equal((await emitAck(bob, 'game:join', { code, nickname: 'Bob' })).ok, true);
   });
 
+  it("transmet les réactions des élèves à l'écran du professeur", async () => {
+    const reaction = nextEvent(host, 'host:reaction');
+    alice.emit('game:react', { emoji: '🎉' });
+    alice.emit('game:react', { emoji: '👏' });
+    assert.deepEqual(await reaction, { emoji: '👏', nickname: 'Alice' });
+
+    const intruder = await connectSocket(server);
+    let leaked = false;
+    host.once('host:reaction', () => (leaked = true));
+    intruder.emit('game:react', { emoji: '👍' });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(leaked, false);
+    intruder.disconnect();
+  });
+
   it('verrouille les inscriptions et exclut un joueur', async () => {
     await act(host, { type: 'setLocked', value: true });
     const late = await connectSocket(server);

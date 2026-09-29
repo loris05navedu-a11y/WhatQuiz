@@ -9,6 +9,7 @@ import { EmptyState } from '../components/EmptyState';
 import { Icon, type IconName } from '../components/Icon';
 import { useToast } from '../context/ToastContext';
 import { Podium } from '../game/Leaderboard';
+import { safeFileName, saveTextFile } from '../lib/download';
 import { formatDateTime, formatNumber, formatPercent, formatSeconds, plural } from '../lib/format';
 
 const SCORING_LABELS = { speed: 'Bonus rapidité', fixed: 'Points fixes', none: 'Sans score' };
@@ -178,11 +179,6 @@ function downloadCsv(results: GameResults): void {
     ['Rang', 'Pseudo', 'Score', 'Bonnes réponses', 'Réponses', 'Temps moyen (s)'],
     ...results.players.map((p) => [p.rank, p.nickname, p.score, p.correctCount, p.answeredCount, p.avgResponseMs === null ? '' : (p.avgResponseMs / 1000).toFixed(1)]),
   ];
-  const csv = '﻿' + rows.map((row) => row.map(escape).join(';')).join('\n');
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `whatquiz-${results.game.quizTitle.replace(/[^\w-]+/g, '_')}-${results.game.code}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
+  const csv = '\uFEFF' + rows.map((row) => row.map(escape).join(';')).join('\n');
+  saveTextFile(csv, `whatquiz-${safeFileName(results.game.quizTitle)}-${results.game.code}.csv`, 'text/csv');
 }
