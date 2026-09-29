@@ -77,6 +77,11 @@ export function AppShell() {
                 <Link role="menuitem" className="menu-item" to="/join" onClick={close}>
                   <Icon name="play" /> Rejoindre une partie
                 </Link>
+                {user?.isAdmin && (
+                  <Link role="menuitem" className="menu-item" to="/admin" onClick={close}>
+                    <Icon name="users" /> Administration
+                  </Link>
+                )}
                 <Link role="menuitem" className="menu-item" to="/settings" onClick={close}>
                   <Icon name="sliders" /> Paramètres du compte
                 </Link>

@@ -12,7 +12,20 @@ export interface PublicUser {
   displayName: string;
   role: Role;
   isDemo: boolean;
+  isAdmin: boolean;
   createdAt: string;
+}
+
+export interface AdminUserRow {
+  id: number;
+  email: string;
+  displayName: string;
+  role: Role;
+  isDemo: boolean;
+  isAdmin: boolean;
+  createdAt: string;
+  quizCount: number;
+  gameCount: number;
 }
 
 /* ───────────── Quiz ───────────── */

@@ -58,6 +58,11 @@ export const requireTeacher: RequestHandler = (req, _res, next) => {
   next(req.user.role === 'teacher' ? undefined : new HttpError(403, 'Réservé aux comptes professeur'));
 };
 
+export const requireAdmin: RequestHandler = (req, _res, next) => {
+  if (!req.user) return next(new HttpError(401, ERRORS.unauthenticated));
+  next(req.user.isAdmin ? undefined : new HttpError(403, ERRORS.forbidden));
+};
+
 export function setSessionCookie(services: Services, res: Response, token: string, expiresAt: number): void {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,

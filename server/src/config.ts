@@ -18,6 +18,8 @@ export interface AppConfig {
   maxPlayers: number;
   /** Adresse à afficher aux élèves (ex. http://192.168.1.20:3000). Détectée automatiquement si vide. */
   publicUrl: string | null;
+  /** E-mails des administrateurs (variable ADMIN_EMAILS, séparés par des virgules). */
+  adminEmails: string[];
   isProduction: boolean;
 }
 
@@ -30,6 +32,10 @@ export function loadConfig(): AppConfig {
     sessionDays: intFromEnv('SESSION_DAYS', 14),
     cookieSecure: process.env.COOKIE_SECURE === 'true',
     maxPlayers: intFromEnv('MAX_PLAYERS', 100),
+    adminEmails: (process.env.ADMIN_EMAILS ?? '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
     publicUrl: process.env.PUBLIC_URL?.trim().replace(/\/+$/, '') || null,
     isProduction: process.env.NODE_ENV === 'production',
   };

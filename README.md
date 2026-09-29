@@ -189,6 +189,7 @@ Copiez `.env.example` en `.env` (jamais commité : il est dans `.gitignore`). To
 | `SESSION_DAYS`  | `14`                   | Durée de validité d'une connexion.                                       |
 | `COOKIE_SECURE` | `false`                | `true` uniquement derrière HTTPS.                                        |
 | `MAX_PLAYERS`   | `100`                  | Nombre maximum de joueurs par partie (valeur par défaut, 200 max).       |
+| `ADMIN_EMAILS`  | *(vide)*               | E-mails administrateurs (séparés par des virgules) : accès à `/admin` pour supprimer des comptes. |
 | `PUBLIC_URL`    | *(détection auto)*     | Adresse montrée aux élèves dans la salle d'attente et le QR code.        |
 | `NODE_ENV`      | —                      | `production` est défini automatiquement par `npm start`.                 |
 
@@ -410,9 +411,21 @@ Toutes les routes sont préfixées par `/api` et répondent en JSON (`{ error: "
 | POST    | `/games/:id/end`            | propriétaire | Terminer la partie.                           |
 | DELETE  | `/games/:id`                | propriétaire | Supprimer une partie de l'historique.         |
 | POST    | `/uploads`                  | professeur | Envoyer une image (PNG, JPEG, GIF, WebP, 2 Mo). |
+| GET     | `/admin/users`              | admin      | Lister tous les comptes.                        |
+| DELETE  | `/admin/users/:id`          | admin      | Supprimer un compte (quiz et parties inclus).   |
 | GET     | `/meta`                     | public     | Adresse(s) à communiquer aux élèves.            |
 
 ---
+
+## Administration
+
+Pour supprimer des comptes (par exemple pour réutiliser une adresse e-mail lors de tests) :
+
+1. Créez d'abord le compte qui sera administrateur via l'inscription.
+2. Dans `.env`, ajoutez son adresse : `ADMIN_EMAILS=moi@exemple.fr` (plusieurs adresses possibles, séparées par des virgules), puis relancez le serveur.
+3. Connecté avec ce compte, ouvrez le menu du compte → **Administration** (ou `/admin`) : recherche, puis icône corbeille avec confirmation.
+
+La suppression efface le compte, ses quiz et l'historique de ses parties ; l'adresse e-mail redevient libre. Les comptes administrateurs et votre propre compte ne peuvent pas être supprimés depuis ce panneau.
 
 ## Sécurité
 

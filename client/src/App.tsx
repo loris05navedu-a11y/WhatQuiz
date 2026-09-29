@@ -26,6 +26,7 @@ const Results = page(() => import('./pages/Results'), 'ResultsPage');
 const History = page(() => import('./pages/History'), 'HistoryPage');
 const Settings = page(() => import('./pages/Settings'), 'SettingsPage');
 const StudentHome = page(() => import('./pages/StudentHome'), 'StudentHomePage');
+const Admin = page(() => import('./pages/Admin'), 'AdminPage');
 const NotFound = page(() => import('./pages/NotFound'), 'NotFoundPage');
 
 function Root() {
@@ -57,6 +58,7 @@ const router = createBrowserRouter([
             children: [
               { path: '/settings', element: <Settings /> },
               { path: '/me', element: <StudentHome /> },
+              { path: '/admin', element: <Admin /> },
               {
                 element: <RequireAuth role="teacher" />,
                 children: [

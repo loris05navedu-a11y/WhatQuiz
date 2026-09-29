@@ -20,7 +20,7 @@ export function createServices(config: AppConfig): Services {
   return {
     config,
     db,
-    users: new UserRepository(db),
+    users: new UserRepository(db, config.adminEmails),
     sessions: new SessionRepository(db, config.sessionDays * 86_400_000),
     quizzes: new QuizRepository(db),
     games: new GameRepository(db),
