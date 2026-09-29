@@ -24,9 +24,10 @@ aucune dépendance native à compiler, une seule commande pour démarrer, un seu
 11. [API REST](#api-rest)
 12. [Sécurité](#sécurité)
 13. [PWA (application installable)](#pwa-application-installable)
-14. [Tests](#tests)
-15. [Déploiement](#déploiement)
-16. [Dépannage](#dépannage)
+14. [Application Android (APK)](#application-android-apk)
+15. [Tests](#tests)
+16. [Déploiement](#déploiement)
+17. [Dépannage](#dépannage)
 
 ---
 
@@ -39,6 +40,10 @@ aucune dépendance native à compiler, une seule commande pour démarrer, un seu
   réponse texte), images (galerie ou appareil photo, redimensionnées automatiquement), temps limite
   (5 s → 2 min), points (500 / 1000 / 2000 ou désactivés), ajout, duplication, suppression,
   réorganisation et aperçu des questions, vérification en direct des erreurs.
+- **Import rapide depuis un texte** : collez vos questions dans l'éditeur (format ci-dessous), elles
+  sont converties automatiquement en QCM, Vrai/Faux ou réponse libre.
+- **Export / import de quiz** en fichier `.whatquiz.json` (images incluses) pour partager un quiz
+  avec un collègue ou le transférer vers un autre serveur.
 - Tests sans impact sur les statistiques :
   - **mode professeur** : l'écran de pilotage réel, avec des élèves fictifs qui répondent tout seuls ;
   - **mode élève** : l'expérience élève complète, la partie avance automatiquement.
@@ -53,7 +58,31 @@ aucune dépendance native à compiler, une seule commande pour démarrer, un seu
 - Écran épuré : question, grandes tuiles de réponse, minuteur, « Réponse enregistrée », correction,
   classement et résultats finaux uniquement quand le professeur les autorise.
 - Reconnexion automatique après une coupure réseau ou un rechargement de page.
+- **Réactions en direct** (👍 👏 😂 😮 🤔 🔥) qui s'envolent sur l'écran du professeur
+  (hors temps de réponse, limitées pour éviter le spam, masquables par le professeur).
 - Compte élève facultatif pour retrouver l'historique de ses parties.
+
+**Format de l'import texte** — un bloc par question, séparés par une ligne vide :
+
+```text
+Quelle est la capitale de l'Italie ?
+* Rome
+- Milan
+
+Quels nombres sont pairs ? (30s)
+* 4
+- 7
+* 10
+
+La Lune est une planète.
+= Faux
+
+Combien font 7 × 8 ?
+= 56 | cinquante-six
+```
+
+`*` bonne réponse, `-` mauvaise réponse, `= Vrai` / `= Faux` pour un Vrai/Faux, `= réponse` pour une
+réponse libre (variantes séparées par `|`), durée facultative en fin d'énoncé : `(30s)`.
 
 **Général** : mode clair/sombre, responsive portrait/paysage, cibles tactiles ≥ 48 px,
 navigation clavier, notifications, confirmations avant suppression, mode démo sans inscription,
@@ -322,11 +351,13 @@ reveal ──next (dernière question)──▶ ended          previous : retour
 | élève → serveur   | `game:join`    | `{ code, nickname, token? }` + acquittement | Rejoindre (ou reprendre avec le jeton de reconnexion).         |
 | élève → serveur   | `game:answer`  | `{ questionIndex, answer }` + acquittement | Répondre (refusé si temps écoulé, pause, déjà répondu…).       |
 | élève → serveur   | `game:leave`   | —                                         | Quitter la partie.                                             |
+| élève → serveur   | `game:react`   | `{ emoji }`                               | Réaction (liste fermée, 6 max. / 5 s par élève).               |
 | prof → serveur    | `host:join`    | `{ code }` + acquittement                 | Prendre le contrôle (vérifie que la partie lui appartient).    |
 | prof → serveur    | `host:action`  | `HostAction` + acquittement               | Toutes les commandes (voir ci-dessous).                        |
 | serveur → élève   | `game:state`   | `PlayerView`                              | État personnalisé de la partie.                                |
 | serveur → prof    | `host:state`   | `HostView`                                | État complet de la partie.                                     |
 | serveur → élève   | `game:kicked`  | —                                         | L'élève a été exclu.                                           |
+| serveur → prof    | `host:reaction`| `{ emoji, nickname }`                     | Réaction d'un élève à afficher.                                |
 
 Actions du professeur (`host:action`) et correspondance avec le cycle de jeu :
 
@@ -461,6 +492,38 @@ Installation : ouvrez WhatQuiz dans Chrome → menu ⋮ → **Installer l'applic
 
 Les icônes peuvent être régénérées depuis `client/public/icons/icon.svg` avec
 `node scripts/generate-icons.mjs` (nécessite Playwright, outil facultatif non installé par défaut).
+
+---
+
+## Application Android (APK)
+
+Le dossier `android/` contient une application Android native très légère (≈ 30 Ko, sans dépendance)
+qui affiche WhatQuiz en plein écran. Elle **ne contient pas le serveur** : elle se connecte au serveur
+WhatQuiz de la classe (Termux sur le téléphone du professeur, ordinateur, Raspberry Pi…).
+
+- Au premier lancement, saisissez l'adresse affichée par le serveur (ex. `192.168.1.20:3000` ;
+  sans port, `:3000` est ajouté). Elle est mémorisée.
+- Si le serveur est injoignable, l'écran de connexion réapparaît avec un message explicatif.
+- « Changer de serveur » : menu du compte, ou lien en bas de la page d'accueil.
+- Les exports (CSV des résultats, fichiers de quiz) sont enregistrés dans **Téléchargements/WhatQuiz**.
+- Le choix d'images (galerie/appareil photo) et l'import de fichiers passent par le sélecteur Android.
+- Les nouvelles fonctionnalités du site arrivent sans réinstaller l'APK : il suffit de mettre à jour le serveur.
+
+Installer l'APK : copiez `WhatQuiz.apk` sur le téléphone, ouvrez-le et autorisez l'installation
+depuis cette source (Android le demande une fois).
+
+Compiler l'APK (JDK 17+ et Android SDK) :
+
+```bash
+cd android
+echo "sdk.dir=/chemin/vers/android-sdk" > local.properties
+./gradlew assembleRelease     # app/build/outputs/apk/release/app-release.apk
+```
+
+Pour une version signée, créez `android/keystore.properties` (non versionné) :
+`storeFile=…jks`, `storePassword=…`, `keyAlias=…`, `keyPassword=…`. Sans ce fichier, utilisez
+`./gradlew assembleDebug`. Une mise à jour de l'APK doit être signée avec la même clé ; sinon
+désinstallez l'ancienne version avant d'installer la nouvelle.
 
 ---
 

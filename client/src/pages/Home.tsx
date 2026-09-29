@@ -97,7 +97,17 @@ export function HomePage() {
           </article>
         ))}
       </section>
-      <footer className="container home-footer muted small">WhatQuiz — application libre pour la classe.</footer>
+      <footer className="container home-footer muted small">
+        WhatQuiz — application libre pour la classe.
+        {window.WhatQuizAndroid && (
+          <>
+            {' · '}
+            <button type="button" className="link-button" onClick={() => window.WhatQuizAndroid?.changeServer()}>
+              Changer de serveur
+            </button>
+          </>
+        )}
+      </footer>
     </div>
   );
 }

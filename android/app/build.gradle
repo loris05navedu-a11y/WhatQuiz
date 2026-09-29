@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Signature de publication : fournie par android/keystore.properties (non versionné).
+def keystoreFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystoreFile.exists()) keystoreFile.withInputStream { keystoreProps.load(it) }
+
+android {
+    namespace 'fr.whatquiz.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'fr.whatquiz.app'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        if (keystoreFile.exists()) {
+            release {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (keystoreFile.exists()) signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

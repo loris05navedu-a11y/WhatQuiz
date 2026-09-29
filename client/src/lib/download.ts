@@ -1,5 +1,6 @@
 interface AndroidBridge {
   saveFile(fileName: string, mimeType: string, base64: string): void;
+  changeServer(): void;
 }
 
 declare global {

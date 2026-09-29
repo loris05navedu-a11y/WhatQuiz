@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { Button, LinkButton, PageLoader } from './Button';
+import '../lib/download';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
 import { Menu } from './Menu';
@@ -85,6 +86,11 @@ export function AppShell() {
                 <Link role="menuitem" className="menu-item" to="/settings" onClick={close}>
                   <Icon name="sliders" /> Paramètres du compte
                 </Link>
+                {window.WhatQuizAndroid && (
+                  <button role="menuitem" className="menu-item" onClick={() => window.WhatQuizAndroid?.changeServer()}>
+                    <Icon name="refresh" /> Changer de serveur
+                  </button>
+                )}
                 <button role="menuitem" className="menu-item danger" onClick={onLogout}>
                   <Icon name="logout" /> Se déconnecter
                 </button>
