@@ -18,7 +18,7 @@ import { QuestionMeta, QuestionStatement } from '../game/QuestionView';
 import { Timer } from '../game/Timer';
 import { useHostGame, type FloatingReaction } from '../game/useHostGame';
 import { readStorage, writeStorage } from '../lib/storage';
-import { SEPARATE_BACKEND, siteOrigin } from '../lib/backend';
+import { SEPARATE_BACKEND, siteOrigin, STANDALONE } from '../lib/backend';
 import { formatNumber, formatPercent } from '../lib/format';
 
 type Act = (action: HostAction) => Promise<void>;
@@ -29,6 +29,7 @@ export function HostPage() {
   const [reactionsShown, setReactionsShown] = useState(() => readStorage('local', 'wq:reactions') !== 'off');
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  useKeepHostAlive(STANDALONE && view !== null && view.phase !== 'ended');
 
   const act = useCallback<Act>(
     async (action) => {
@@ -94,6 +95,41 @@ export function HostPage() {
   );
 }
 
+/**
+ * Mode sans serveur : la partie tourne dans cet onglet. On garde l'écran allumé et on prévient avant
+ * une fermeture ou un rechargement qui mettrait fin à la partie.
+ */
+function useKeepHostAlive(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    let lock: WakeLockSentinel | null = null;
+    let released = false;
+    const acquire = () => {
+      if (document.visibilityState !== 'visible' || !('wakeLock' in navigator)) return;
+      navigator.wakeLock
+        .request('screen')
+        .then((sentinel) => {
+          if (released) void sentinel.release();
+          else lock = sentinel;
+        })
+        .catch(() => undefined);
+    };
+    acquire();
+    document.addEventListener('visibilitychange', acquire);
+    return () => {
+      released = true;
+      window.removeEventListener('beforeunload', warn);
+      document.removeEventListener('visibilitychange', acquire);
+      void lock?.release().catch(() => undefined);
+    };
+  }, [active]);
+}
+
 /* ───────────── En-tête et panneaux ───────────── */
 
 function ReactionLayer({ reactions }: { reactions: FloatingReaction[] }) {
@@ -125,7 +161,9 @@ function HostHeader({ view, act, reactionsShown, onToggleReactions }: HostHeader
     if (view.phase !== 'ended') {
       const ok = await confirm({
         title: 'Quitter l’écran de la partie ?',
-        message: 'La partie continue sur le serveur : vous pourrez la reprendre depuis le tableau de bord.',
+        message: STANDALONE
+          ? 'La partie continue sur cet appareil tant que le site reste ouvert : vous pourrez la reprendre depuis le tableau de bord.'
+          : 'La partie continue sur le serveur : vous pourrez la reprendre depuis le tableau de bord.',
         confirmLabel: 'Quitter',
       });
       if (!ok) return;
@@ -308,7 +346,7 @@ function HostPhase(props: PhaseProps) {
 function useJoinUrl(): string {
   const [base, setBase] = useState(siteOrigin());
   useEffect(() => {
-    if (SEPARATE_BACKEND) return;
+    if (SEPARATE_BACKEND || STANDALONE) return;
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
     if (!local) return;
     metaApi
@@ -369,6 +407,7 @@ function LobbyPhase({ view, act, busy }: PhaseProps) {
               <span />
             </p>
             <p>En attente des joueurs…</p>
+            {STANDALONE && !view.isTest && <p className="muted-inverse small">Gardez cette page ouverte : la partie tourne sur cet appareil.</p>}
             {view.isTest && (
               <Button variant="soft" icon="bot" onClick={() => act({ type: 'addBots', count: 5 })}>
                 Ajouter des élèves fictifs

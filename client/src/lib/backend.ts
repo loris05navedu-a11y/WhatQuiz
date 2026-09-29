@@ -6,6 +6,12 @@ import { readStorage, writeStorage } from './storage';
  */
 export const API_ORIGIN = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '');
 
+/**
+ * Mode sans serveur (GitHub Pages sans VITE_API_URL) : les comptes et les quiz restent dans le navigateur,
+ * la partie tourne sur l'appareil du professeur et les élèves s'y connectent en pair-à-pair (WebRTC).
+ */
+export const STANDALONE = !API_ORIGIN && import.meta.env.VITE_STANDALONE === 'true';
+
 /** Le site est hébergé séparément du serveur : l'authentification passe par un jeton et non par un cookie. */
 export const SEPARATE_BACKEND = API_ORIGIN !== '';
 

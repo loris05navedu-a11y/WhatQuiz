@@ -8,6 +8,7 @@ import { Segmented, TextField } from '../components/Form';
 import { Logo } from '../components/Logo';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { homePathFor, useAuth } from '../context/AuthContext';
+import { STANDALONE } from '../lib/backend';
 
 function AuthLayout({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
@@ -105,7 +106,14 @@ export function RegisterPage() {
   };
 
   return (
-    <AuthLayout title="Créer un compte" subtitle="Gratuit, sans publicité, vos données restent sur votre serveur.">
+    <AuthLayout
+      title="Créer un compte"
+      subtitle={
+        STANDALONE
+          ? 'Gratuit, sans publicité. Le compte et vos quiz restent dans ce navigateur, sur cet appareil.'
+          : 'Gratuit, sans publicité, vos données restent sur votre serveur.'
+      }
+    >
       <form className="stack" onSubmit={submit}>
         {error && (
           <p className="alert" role="alert">

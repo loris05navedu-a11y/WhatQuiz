@@ -1,17 +1,17 @@
 import { ERRORS } from '../../../shared/constants';
-import { API_ORIGIN, getToken, SEPARATE_BACKEND } from '../lib/backend';
+import { API_ORIGIN, getToken, SEPARATE_BACKEND, STANDALONE } from '../lib/backend';
+import { ApiError } from './errors';
 
-export class ApiError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export { ApiError, errorMessage } from './errors';
+
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 /** Appel JSON vers l'API. Les erreurs sont toujours converties en message lisible. */
-export async function api<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
+export async function api<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
+  if (STANDALONE) {
+    const { localApi } = await import('../standalone/api');
+    return localApi<T>(method, path, body);
+  }
   let response: Response;
   try {
     const token = getToken();
@@ -31,8 +31,4 @@ export async function api<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: st
   const data = (await response.json().catch(() => null)) as (T & { error?: string }) | null;
   if (!response.ok) throw new ApiError(response.status, data?.error ?? ERRORS.generic);
   return data as T;
-}
-
-export function errorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : ERRORS.generic;
 }

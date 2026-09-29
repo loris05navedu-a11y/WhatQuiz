@@ -1,5 +1,5 @@
-import { randomBytes, randomUUID } from 'node:crypto';
 import { ERRORS, LIMITS } from '../../../shared/constants';
+import { randomToken, randomUuid } from '../../../shared/random';
 import { computePoints, correctChoiceIndexes, isAnswerCorrect, normalizeText } from '../../../shared/scoring';
 import type {
   GamePhase,
@@ -18,6 +18,8 @@ import type { GameRepository, QuizSnapshot } from '../db/games';
 import { pickBotAnswer, pickBotDelay, pickBotNames } from './bots';
 import { GameError } from './errors';
 import { rankPlayers, toLeaderboard } from './leaderboard';
+
+type Timer = ReturnType<typeof setTimeout>;
 
 /** Délais du mode « avance automatique » (mode test élève notamment). */
 export const AUTO_DELAYS = { ready: 3000, reveal: 4000, leaderboard: 4000 };
@@ -56,7 +58,7 @@ export interface RoomPlayer {
   /** Score montré à l'élève, mis à jour uniquement quand la correction/le classement sont révélés. */
   revealedScore: number;
   answers: Map<number, RecordedAnswer>;
-  disconnectTimer: NodeJS.Timeout | null;
+  disconnectTimer: Timer | null;
 }
 
 export interface RoomOptions {
@@ -105,14 +107,14 @@ export class GameRoom {
   private openedAt = 0;
   private pausedAt = 0;
   private pausedTotal = 0;
-  private questionTimer: NodeJS.Timeout | null = null;
-  private autoTimer: NodeJS.Timeout | null = null;
-  private readonly botTimers = new Set<NodeJS.Timeout>();
+  private questionTimer: Timer | null = null;
+  private autoTimer: Timer | null = null;
+  private readonly botTimers = new Set<Timer>();
 
   private dirtyHost = false;
   private dirtyPlayers: Set<string> | 'all' = new Set();
   private flushScheduled = false;
-  private hostThrottle: NodeJS.Timeout | null = null;
+  private hostThrottle: Timer | null = null;
 
   constructor(options: RoomOptions) {
     this.id = options.id;
@@ -204,8 +206,8 @@ export class GameRoom {
 
   private addPlayer(input: { nickname: string; userId: number | null; isBot: boolean; socketId: string | null }): RoomPlayer {
     const player: RoomPlayer = {
-      id: randomUUID(),
-      token: randomBytes(18).toString('base64url'),
+      id: randomUuid(),
+      token: randomToken(),
       nickname: input.nickname,
       userId: input.userId,
       isBot: input.isBot,

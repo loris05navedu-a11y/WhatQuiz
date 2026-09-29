@@ -20,13 +20,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Vérifier l'adresse du serveur
+      # Sans variable API_URL, le site fonctionne seul : comptes et quiz dans le navigateur, parties en pair-à-pair.
+      # Avec API_URL (adresse HTTPS d'un serveur WhatQuiz), le site utilise ce serveur.
+      - name: Mode de publication
         env:
           API_URL: ${{ vars.API_URL }}
         run: |
           if [ -z "$API_URL" ]; then
-            echo "::error::La variable de dépôt API_URL est vide. GitHub Pages ne sert que le site : indiquez l'adresse HTTPS de votre serveur WhatQuiz (Settings > Secrets and variables > Actions > Variables > API_URL)."
-            exit 1
+            echo "::notice::Site publié sans serveur (aucune variable API_URL)."
+          else
+            echo "::notice::Site relié au serveur $API_URL"
           fi
 
       - uses: actions/setup-node@v4
@@ -40,6 +43,7 @@ jobs:
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
           VITE_API_URL: ${{ vars.API_URL }}
+          VITE_STANDALONE: ${{ vars.API_URL == '' && 'true' || 'false' }}
         run: npm run build:client
 
       # GitHub Pages renvoie 404.html pour les liens profonds (/join, /dashboard…) : c'est le même fichier que l'accueil.

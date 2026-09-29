@@ -23,7 +23,7 @@ export function useHostGame(code: string) {
   const socketRef = useRef<GameSocket | null>(null);
 
   useEffect(() => {
-    const socket = createGameSocket();
+    const socket = createGameSocket(code);
     socketRef.current = socket;
     socket.on('connect', async () => {
       setConnected(true);

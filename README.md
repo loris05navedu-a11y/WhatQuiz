@@ -7,6 +7,9 @@ avec un code à 6 chiffres depuis n'importe quelle tablette ou téléphone, sans
 Le projet est pensé pour être **installé, lancé et développé depuis une tablette Android avec Termux** :
 aucune dépendance native à compiler, une seule commande pour démarrer, un seul port à ouvrir.
 
+Il peut aussi être publié **sans serveur** sur GitHub Pages : la partie tourne alors dans le navigateur du
+professeur et les élèves s'y connectent en pair-à-pair (voir [Publier le site sur GitHub Pages](#publier-le-site-sur-github-pages)).
+
 ---
 
 ## Sommaire
@@ -533,57 +536,64 @@ désinstallez l'ancienne version avant d'installer la nouvelle.
 
 ## Publier le site sur GitHub Pages
 
-GitHub Pages n'héberge que des **fichiers statiques** : il publie l'interface, pas le serveur. WhatQuiz a
-besoin d'un serveur Node.js (API, base SQLite, temps réel Socket.IO) qui doit tourner ailleurs.
+Le site peut être publié **gratuitement et sans aucun serveur** sur GitHub Pages :
+`https://loris05navedu-a11y.github.io/WhatQuiz/` (c'est aussi l'adresse ouverte par l'APK).
 
-```
-Élèves / prof / APK  ──►  GitHub Pages (site)  ──►  votre serveur WhatQuiz (HTTPS)
-```
-
-### 1. Héberger le serveur (HTTPS obligatoire)
-
-Sur n'importe quel hébergeur Node.js ≥ 22.13 (Render, Railway, Fly.io, VPS, Raspberry Pi derrière un tunnel HTTPS…) :
-
-```bash
-npm ci && npm run build && npm start
-```
-
-Variables à définir sur le serveur :
-
-| Variable       | Exemple                                  | Rôle                                                              |
-| -------------- | ---------------------------------------- | ----------------------------------------------------------------- |
-| `CORS_ORIGINS` | `https://loris05navedu-a11y.github.io`   | Domaine du site GitHub Pages (sans chemin). Séparez par `,` si plusieurs. |
-| `TRUST_PROXY`  | `1`                                      | Nombre de proxys devant le serveur (1 sur Render/Fly/Railway) : nécessaire pour que la limitation de tentatives voie la vraie adresse de chaque utilisateur. |
-| `ADMIN_EMAILS` | `loris05.nav@gmail.com`                  | Administrateurs (facultatif).                                     |
-| `DATABASE_PATH`, `UPLOAD_DIR` | `/data/whatquiz.db`, `/data/uploads` | À placer sur un **disque persistant** : sans lui, comptes et quiz sont perdus à chaque redémarrage (cas des offres gratuites sans disque). |
-
-Sur Render : *New → Web Service*, build `npm ci && npm run build`, start `npm start`, variable
-`NODE_VERSION=22`. Notez l'adresse obtenue (ex. `https://whatquiz.onrender.com`).
-
-### 2. Publier le site
+### Mise en ligne
 
 1. Dépôt GitHub → **Settings → Pages → Source : GitHub Actions**.
-2. **Settings → Secrets and variables → Actions → Variables** : créez `API_URL` = adresse HTTPS du serveur (sans `/` final).
-3. Fusionnez la branche dans `main` (ou lancez le workflow à la main : *Actions → Déployer le site sur GitHub Pages → Run workflow*).
+2. Poussez sur `main` (ou *Actions → Déployer le site sur GitHub Pages → Run workflow*).
 
-Le workflow `.github/workflows/pages.yml` compile le site avec `BASE_PATH=/<nom-du-dépôt>/` et `VITE_API_URL=<API_URL>`,
-puis le publie. Le site est alors disponible sur `https://<compte>.github.io/<dépôt>/`. Le code QR de la salle
-d'attente pointe vers cette adresse.
+Le workflow `.github/workflows/pages.yml` compile le site avec `BASE_PATH=/<nom-du-dépôt>/`, crée `404.html`
+pour les liens profonds (`/join`, `/dashboard`…) et le publie.
+
+### Fonctionnement sans serveur
+
+```
+Élève (téléphone)  ◄── WebRTC, en direct ──►  Professeur (onglet de la partie)
+          └──── mise en relation : serveur public PeerJS ────┘
+```
+
+- **Comptes et quiz** sont enregistrés dans le navigateur (IndexedDB) de l'appareil où ils ont été créés.
+  Pour passer un quiz sur un autre appareil : *Exporter* puis *Importer* (fichier `.whatquiz.json`).
+- **La partie tourne dans l'onglet du professeur** : c'est lui qui fait autorité (minuteur, score, bonnes
+  réponses, qui ne quittent jamais son appareil). **Gardez cette page ouverte** pendant la partie :
+  la fermer ou la recharger met fin à la partie. L'écran reste allumé automatiquement quand le navigateur le permet.
+- **Les élèves se connectent en pair-à-pair** (WebRTC, bibliothèque PeerJS). Le service public gratuit de PeerJS
+  ne sert qu'à la mise en relation ; les réponses passent directement d'appareil à appareil. Une connexion
+  Internet est nécessaire au lancement de la partie et à l'arrivée de chaque élève.
+- Un élève qui perd le réseau ou recharge sa page reprend la partie là où il en était.
+- Les images sont intégrées au quiz (réduites à 800 px) au lieu d'être envoyées sur un serveur.
+- Un élève connecté à un compte élève sur son appareil retrouve ses parties dans « Mon espace ».
+- Le panneau d'administration n'existe pas dans ce mode (chaque appareil ne contient que ses propres comptes).
 
 Compilation manuelle équivalente :
 
 ```bash
-BASE_PATH=/WhatQuiz/ VITE_API_URL=https://whatquiz.onrender.com npm run build:client
-cp dist/client/index.html dist/client/404.html   # liens profonds (/join, /dashboard…)
+BASE_PATH=/WhatQuiz/ VITE_STANDALONE=true npm run build:client
+cp dist/client/index.html dist/client/404.html
 ```
 
-### Différences avec l'hébergement sur le serveur lui-même
+Code : `client/src/standalone/` (`db.ts` données du navigateur, `api.ts` mêmes routes que le serveur,
+`hub.ts` moteur de partie de `server/src/game` exécuté dans le navigateur, `peer.ts` liaison WebRTC,
+`socket.ts` remplaçant de Socket.IO pour les écrans de jeu). Test : `server/tests/standalone.test.ts`.
 
-- La connexion utilise un **jeton** (en-tête `Authorization`, stocké dans le navigateur) au lieu d'un cookie : les
-  cookies entre deux domaines sont bloqués par Safari et de plus en plus par Chrome. Le serveur reste compatible
-  avec le mode cookie classique (Termux, réseau local).
-- Les images des quiz restent stockées sur le serveur.
-- Sur une offre gratuite qui se met en veille, la première requête peut prendre plusieurs dizaines de secondes.
+### Variante : relier le site à un serveur WhatQuiz (facultatif)
+
+Pour des comptes partagés entre appareils, faites tourner le serveur sur un hébergeur Node.js ≥ 22.13
+**avec disque persistant** (`npm ci && npm run build && npm start`), puis créez la variable de dépôt
+**Settings → Secrets and variables → Actions → Variables → `API_URL`** = adresse HTTPS du serveur (sans `/` final).
+Le workflow compile alors le site avec `VITE_API_URL` au lieu du mode sans serveur.
+
+| Variable du serveur | Exemple | Rôle |
+| ------------------- | ------- | ---- |
+| `CORS_ORIGINS` | `https://loris05navedu-a11y.github.io` | Domaine du site GitHub Pages (sans chemin). |
+| `TRUST_PROXY` | `1` | Nombre de proxys devant le serveur (1 sur Render/Fly/Railway). |
+| `DATABASE_PATH`, `UPLOAD_DIR` | `/data/whatquiz.db`, `/data/uploads` | Sur le disque persistant, sinon tout est perdu au redémarrage. |
+
+Dans cette variante, la connexion utilise un jeton (en-tête `Authorization`) au lieu d'un cookie, et les images
+restent stockées sur le serveur. Les offres gratuites sans disque persistant (Render gratuit, par exemple)
+ne conviennent pas : supprimez simplement `API_URL` pour revenir au mode sans serveur.
 
 ---
 

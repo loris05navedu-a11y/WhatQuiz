@@ -1,11 +1,13 @@
 import { io, type Socket } from 'socket.io-client';
 import type { AckResult, ClientToServerEvents, ServerToClientEvents } from '../../../shared/types';
 import { ERRORS } from '../../../shared/constants';
-import { API_ORIGIN, getToken } from './backend';
+import { StandaloneSocket } from '../standalone/socket';
+import { API_ORIGIN, getToken, STANDALONE } from './backend';
 
 export type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-export function createGameSocket(): GameSocket {
+export function createGameSocket(code: string): GameSocket {
+  if (STANDALONE) return new StandaloneSocket(code) as unknown as GameSocket;
   // WebSocket direct (pas de long-polling) : moins de requêtes, plus fluide sur tablette.
   const options = { transports: ['websocket'], reconnectionDelayMax: 4000, auth: (send: (data: object) => void) => send({ token: getToken() ?? undefined }) };
   return API_ORIGIN ? io(API_ORIGIN, options) : io(options);

@@ -1,4 +1,8 @@
-const MAX_SIDE = 1280;
+import { STANDALONE } from './backend';
+
+// Sans serveur, l'image voyage dans le quiz et vers chaque élève : on la garde plus légère.
+const MAX_SIDE = STANDALONE ? 800 : 1280;
+const QUALITY = STANDALONE ? 0.75 : 0.85;
 
 /** Redimensionne une image côté navigateur avant l'envoi (plus léger pour le réseau et la tablette). */
 export async function resizeImage(file: File): Promise<string> {
@@ -12,7 +16,7 @@ export async function resizeImage(file: File): Promise<string> {
   canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-  return canvas.toDataURL(type, 0.85);
+  return canvas.toDataURL(type, QUALITY);
 }
 
 export function blobToDataUrl(blob: Blob): Promise<string> {

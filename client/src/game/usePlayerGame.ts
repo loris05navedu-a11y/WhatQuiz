@@ -55,7 +55,7 @@ export function usePlayerGame(code: string, autoJoinNickname?: string) {
   );
 
   useEffect(() => {
-    const socket = createGameSocket();
+    const socket = createGameSocket(code);
     socketRef.current = socket;
     let firstConnection = true;
 

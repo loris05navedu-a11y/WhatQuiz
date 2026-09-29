@@ -1,6 +1,6 @@
 // Service worker WhatQuiz : l'interface reste disponible même avec un réseau instable.
 // Les données (API, temps réel, images envoyées) ne sont jamais mises en cache : elles viennent toujours du serveur.
-const CACHE = 'whatquiz-v2';
+const CACHE = 'whatquiz-v3';
 // Le site peut être publié dans un sous-dossier (GitHub Pages) : tout est relatif à l'emplacement de ce fichier.
 const BASE = new URL('./', self.location).pathname;
 const SHELL = ['', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'theme-init.js'].map((path) => BASE + path);

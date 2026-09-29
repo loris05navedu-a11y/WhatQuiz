@@ -6,14 +6,23 @@ z.config(z.locales.fr());
 
 const trimmed = (max: number) => z.string().trim().max(max);
 
-/** URL d'image : fichier envoyé sur le serveur ou lien http(s). */
-const imageUrl = z
-  .string()
-  .trim()
-  .max(500)
-  .refine((value) => /^\/uploads\/[\w.-]+$/.test(value) || /^https?:\/\/\S+$/.test(value), 'Image invalide')
-  .nullable()
-  .default(null);
+const EMBEDDED_IMAGE = /^data:image\/[\w+.-]+;base64,[A-Za-z0-9+/=]+$/;
+
+/** URL d'image : fichier envoyé sur le serveur ou lien http(s) ; image intégrée (data URL) en mode sans serveur. */
+const imageUrlSchema = (allowEmbedded: boolean) =>
+  z
+    .string()
+    .trim()
+    .max(allowEmbedded ? 3_000_000 : 500)
+    .refine(
+      (value) =>
+        /^\/uploads\/[\w.-]+$/.test(value) ||
+        (/^https?:\/\/\S+$/.test(value) && value.length <= 500) ||
+        (allowEmbedded && EMBEDDED_IMAGE.test(value)),
+      'Image invalide',
+    )
+    .nullable()
+    .default(null);
 
 export const registerSchema = z.object({
   email: z.string().trim().toLowerCase().email('Adresse e-mail invalide').max(160),
@@ -42,31 +51,38 @@ const answerSchema = z.object({
   isCorrect: z.boolean(),
 });
 
-export const questionSchema = z
-  .object({
-    type: z.enum(QUESTION_TYPES),
-    text: trimmed(LIMITS.questionText),
-    imageUrl,
-    timeLimit: z.number().int().refine((value) => (TIME_LIMITS as readonly number[]).includes(value), 'Temps limite invalide'),
-    points: z.number().int().min(0).max(5000),
-    pointsEnabled: z.boolean(),
-    answers: z.array(answerSchema).max(LIMITS.maxAcceptedAnswers),
-  })
-  .transform((question) =>
-    question.type === 'text' ? { ...question, answers: question.answers.map((a) => ({ ...a, isCorrect: true })) } : question,
-  )
-  .superRefine((question, ctx) => {
-    const problem = questionProblem(question);
-    if (problem) ctx.addIssue({ code: 'custom', message: problem });
-  });
+const buildQuizSchema = (allowEmbedded: boolean) => {
+  const imageUrl = imageUrlSchema(allowEmbedded);
+  const questionSchema = z
+    .object({
+      type: z.enum(QUESTION_TYPES),
+      text: trimmed(LIMITS.questionText),
+      imageUrl,
+      timeLimit: z.number().int().refine((value) => (TIME_LIMITS as readonly number[]).includes(value), 'Temps limite invalide'),
+      points: z.number().int().min(0).max(5000),
+      pointsEnabled: z.boolean(),
+      answers: z.array(answerSchema).max(LIMITS.maxAcceptedAnswers),
+    })
+    .transform((question) =>
+      question.type === 'text' ? { ...question, answers: question.answers.map((a) => ({ ...a, isCorrect: true })) } : question,
+    )
+    .superRefine((question, ctx) => {
+      const problem = questionProblem(question);
+      if (problem) ctx.addIssue({ code: 'custom', message: problem });
+    });
 
-export const quizSchema = z.object({
-  title: trimmed(LIMITS.quizTitle).min(1, 'Le titre du quiz est obligatoire'),
-  description: trimmed(LIMITS.quizDescription).default(''),
-  imageUrl,
-  category: trimmed(LIMITS.category).default(CATEGORIES[0]),
-  questions: z.array(questionSchema).max(LIMITS.questionsPerQuiz, `${LIMITS.questionsPerQuiz} questions maximum`),
-});
+  return z.object({
+    title: trimmed(LIMITS.quizTitle).min(1, 'Le titre du quiz est obligatoire'),
+    description: trimmed(LIMITS.quizDescription).default(''),
+    imageUrl,
+    category: trimmed(LIMITS.category).default(CATEGORIES[0]),
+    questions: z.array(questionSchema).max(LIMITS.questionsPerQuiz, `${LIMITS.questionsPerQuiz} questions maximum`),
+  });
+};
+
+export const quizSchema = buildQuizSchema(false);
+/** Mode sans serveur : les images sont conservées dans le quiz lui-même. */
+export const embeddedQuizSchema = buildQuizSchema(true);
 
 export const gameSettingsSchema = z.object({
   scoringMode: z.enum(['speed', 'fixed', 'none']),
