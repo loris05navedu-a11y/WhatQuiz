@@ -4,6 +4,7 @@ import { uploadApi } from '../api/endpoints';
 import { Button } from '../components/Button';
 import { useToast } from '../context/ToastContext';
 import { resizeImage } from '../lib/image';
+import { assetUrl } from '../lib/backend';
 
 interface ImagePickerProps {
   value: string | null;
@@ -36,7 +37,7 @@ export function ImagePicker({ value, onChange, label }: ImagePickerProps) {
       <input ref={inputRef} type="file" accept="image/*" hidden onChange={(e) => pick(e.target.files?.[0])} aria-label={label} />
       {value ? (
         <div className="image-picker-preview">
-          <img src={value} alt="" />
+          <img src={assetUrl(value)} alt="" />
           <div className="row">
             <Button size="sm" icon="refresh" onClick={() => inputRef.current?.click()} loading={uploading}>
               Remplacer

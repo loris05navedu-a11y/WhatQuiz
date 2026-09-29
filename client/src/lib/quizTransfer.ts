@@ -3,6 +3,7 @@ import type { Quiz, QuizInput } from '../../../shared/types';
 import { errorMessage } from '../api/client';
 import { quizApi, uploadApi } from '../api/endpoints';
 import { safeFileName, saveTextFile } from './download';
+import { assetUrl } from './backend';
 import { blobToDataUrl } from './image';
 
 const MAX_FILE_BYTES = 40 * 1024 * 1024;
@@ -25,7 +26,7 @@ export async function exportQuiz(id: number): Promise<void> {
   const portable = await mapImages(quiz, async (url) => {
     if (!url.startsWith('/uploads/')) return url;
     try {
-      const response = await fetch(url);
+      const response = await fetch(assetUrl(url));
       return response.ok ? await blobToDataUrl(await response.blob()) : null;
     } catch {
       return null;

@@ -18,6 +18,7 @@ import { QuestionMeta, QuestionStatement } from '../game/QuestionView';
 import { Timer } from '../game/Timer';
 import { useHostGame, type FloatingReaction } from '../game/useHostGame';
 import { readStorage, writeStorage } from '../lib/storage';
+import { SEPARATE_BACKEND, siteOrigin } from '../lib/backend';
 import { formatNumber, formatPercent } from '../lib/format';
 
 type Act = (action: HostAction) => Promise<void>;
@@ -305,8 +306,9 @@ function HostPhase(props: PhaseProps) {
 }
 
 function useJoinUrl(): string {
-  const [base, setBase] = useState(window.location.origin);
+  const [base, setBase] = useState(siteOrigin());
   useEffect(() => {
+    if (SEPARATE_BACKEND) return;
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
     if (!local) return;
     metaApi

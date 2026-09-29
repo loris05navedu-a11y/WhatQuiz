@@ -1,4 +1,5 @@
 import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from 'react';
+import { BASE_PATH } from './lib/backend';
 import { createBrowserRouter, Outlet, RouterProvider } from 'react-router';
 import { AppShell } from './components/AppShell';
 import { PageLoader } from './components/Button';
@@ -78,7 +79,7 @@ const router = createBrowserRouter([
       { path: '*', element: <NotFound /> },
     ],
   },
-]);
+], { basename: BASE_PATH });
 
 export function App() {
   return (

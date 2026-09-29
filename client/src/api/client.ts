@@ -1,4 +1,5 @@
 import { ERRORS } from '../../../shared/constants';
+import { API_ORIGIN, getToken, SEPARATE_BACKEND } from '../lib/backend';
 
 export class ApiError extends Error {
   constructor(
@@ -13,10 +14,15 @@ export class ApiError extends Error {
 export async function api<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (SEPARATE_BACKEND) headers['X-Auth-Mode'] = 'token';
+    if (token) headers.Authorization = `Bearer ${token}`;
+    response = await fetch(`${API_ORIGIN}/api${path}`, {
       method,
-      credentials: 'same-origin',
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      credentials: SEPARATE_BACKEND ? 'omit' : 'same-origin',
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {

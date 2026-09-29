@@ -1,7 +1,9 @@
 // Service worker WhatQuiz : l'interface reste disponible même avec un réseau instable.
 // Les données (API, temps réel, images envoyées) ne sont jamais mises en cache : elles viennent toujours du serveur.
-const CACHE = 'whatquiz-v1';
-const SHELL = ['/', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/theme-init.js'];
+const CACHE = 'whatquiz-v2';
+// Le site peut être publié dans un sous-dossier (GitHub Pages) : tout est relatif à l'emplacement de ce fichier.
+const BASE = new URL('./', self.location).pathname;
+const SHELL = ['', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'theme-init.js'].map((path) => BASE + path);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -20,7 +22,8 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io/') || url.pathname.startsWith('/uploads/')) return;
+  const path = url.pathname.slice(BASE.length - 1);
+  if (path.startsWith('/api/') || path.startsWith('/socket.io/') || path.startsWith('/uploads/')) return;
 
   // Navigation : réseau d'abord (version à jour), page en cache si hors ligne.
   if (request.mode === 'navigate') {
@@ -28,10 +31,10 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((response) => {
           const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put('/', copy));
+          caches.open(CACHE).then((cache) => cache.put(BASE, copy));
           return response;
         })
-        .catch(() => caches.match('/')),
+        .catch(() => caches.match(BASE)),
     );
     return;
   }
@@ -42,7 +45,7 @@ self.addEventListener('fetch', (event) => {
       (cached) =>
         cached ||
         fetch(request).then((response) => {
-          if (response.ok && (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/'))) {
+          if (response.ok && (path.startsWith('/assets/') || path.startsWith('/icons/'))) {
             const copy = response.clone();
             caches.open(CACHE).then((cache) => cache.put(request, copy));
           }

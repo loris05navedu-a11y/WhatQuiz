@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">WhatQuiz</string>
+    <!-- Adresse du site publié sur GitHub Pages (avec le / final). À adapter si le dépôt ou le compte change. -->
+    <string name="app_url" translatable="false">https://loris05navedu-a11y.github.io/WhatQuiz/</string>
 </resources>

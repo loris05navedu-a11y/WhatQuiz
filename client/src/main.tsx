@@ -15,6 +15,6 @@ createRoot(document.getElementById('root')!).render(
 // Le service worker n'est actif qu'en production (en développement il gênerait le rechargement à chaud).
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL }).catch(() => undefined);
   });
 }

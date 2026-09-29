@@ -11,6 +11,7 @@ import type {
   Role,
   StudentHistoryEntry,
 } from '../../../shared/types';
+import { setToken } from '../lib/backend';
 import { api } from './client';
 
 export type GameMode = 'live' | 'test-host' | 'test-player';
@@ -23,13 +24,31 @@ export interface ActiveGame {
   playerCount: number;
 }
 
+interface SessionResponse {
+  user: PublicUser;
+  token?: string;
+}
+
+/** Mémorise le jeton de session renvoyé par le serveur (site hébergé séparément). */
+async function openedSession(request: Promise<SessionResponse>): Promise<{ user: PublicUser }> {
+  const { user, token } = await request;
+  if (token) setToken(token);
+  return { user };
+}
+
 export const authApi = {
   me: () => api<{ user: PublicUser | null }>('GET', '/auth/me'),
-  login: (email: string, password: string) => api<{ user: PublicUser }>('POST', '/auth/login', { email, password }),
+  login: (email: string, password: string) => openedSession(api<SessionResponse>('POST', '/auth/login', { email, password })),
   register: (input: { email: string; password: string; displayName: string; role: Role }) =>
-    api<{ user: PublicUser }>('POST', '/auth/register', input),
-  demo: () => api<{ user: PublicUser }>('POST', '/auth/demo'),
-  logout: () => api<{ ok: true }>('POST', '/auth/logout'),
+    openedSession(api<SessionResponse>('POST', '/auth/register', input)),
+  demo: () => openedSession(api<SessionResponse>('POST', '/auth/demo')),
+  logout: async () => {
+    try {
+      return await api<{ ok: true }>('POST', '/auth/logout');
+    } finally {
+      setToken(null);
+    }
+  },
 };
 
 export const accountApi = {

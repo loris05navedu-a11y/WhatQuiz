@@ -5,7 +5,6 @@ import android.content.ActivityNotFoundException;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
@@ -34,26 +33,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Coquille Android de WhatQuiz : affiche le site servi par le serveur WhatQuiz (Termux, PC…)
- * dans une WebView, avec un écran pour choisir l'adresse du serveur.
+ * Coquille Android de WhatQuiz : affiche le site WhatQuiz (GitHub Pages) en plein écran dans une WebView.
  */
 public class MainActivity extends Activity {
-    private static final String PREFS = "whatquiz";
-    private static final String KEY_SERVER = "server";
-    private static final String SETUP_URL = "file:///android_asset/setup.html";
+    private static final String OFFLINE_URL = "file:///android_asset/offline.html";
     private static final int FILE_CHOOSER_REQUEST = 1;
 
     private WebView web;
-    private SharedPreferences prefs;
-    private String serverUrl;
+    private String siteUrl;
     private ValueCallback<Uri[]> pendingChooser;
-    private boolean clearHistoryOnLoad;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        serverUrl = prefs.getString(KEY_SERVER, null);
+        siteUrl = getString(R.string.app_url);
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(getColor(R.color.stage));
@@ -74,8 +67,7 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new Chrome());
 
         if (savedInstanceState != null && web.restoreState(savedInstanceState) != null) return;
-        if (serverUrl == null) showSetup(null);
-        else web.loadUrl(serverUrl);
+        web.loadUrl(siteUrl);
     }
 
     /** Android 15 affiche l'application sous les barres système : on décale le contenu (et le clavier). */
@@ -88,39 +80,19 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void showSetup(String error) {
-        StringBuilder url = new StringBuilder(SETUP_URL).append("?server=").append(Uri.encode(serverUrl == null ? "" : serverUrl));
-        if (error != null) url.append("&error=").append(Uri.encode(error));
-        web.loadUrl(url.toString());
-    }
-
-    /** Ajoute http:// et le port 3000 par défaut quand l'utilisateur tape seulement une adresse IP. */
-    static String normalizeServer(String raw) {
-        String value = raw == null ? "" : raw.trim();
-        if (value.isEmpty()) return null;
-        boolean hasScheme = value.matches("(?i)^https?://.*");
-        if (!hasScheme) value = "http://" + value;
-        Uri uri = Uri.parse(value);
-        if (uri.getHost() == null || uri.getHost().isEmpty()) return null;
-        String origin = uri.getScheme().toLowerCase() + "://" + uri.getHost();
-        if (uri.getPort() != -1) origin += ":" + uri.getPort();
-        else if (!hasScheme) origin += ":3000";
-        return origin;
-    }
-
-    private boolean isServerUrl(Uri uri) {
-        if (serverUrl == null) return false;
-        Uri server = Uri.parse(serverUrl);
-        return server.getScheme().equalsIgnoreCase(uri.getScheme())
-                && server.getHost().equalsIgnoreCase(uri.getHost())
-                && server.getPort() == uri.getPort();
+    /** Seules les pages du site WhatQuiz restent dans l'application ; les autres liens s'ouvrent dans le navigateur. */
+    private boolean isSiteUrl(Uri uri) {
+        Uri site = Uri.parse(siteUrl);
+        return site.getScheme().equalsIgnoreCase(uri.getScheme())
+                && site.getHost().equalsIgnoreCase(uri.getHost())
+                && site.getPort() == uri.getPort();
     }
 
     private class Client extends WebViewClient {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri uri = request.getUrl();
-            if ("file".equals(uri.getScheme()) || isServerUrl(uri)) return false;
+            if ("file".equals(uri.getScheme()) || isSiteUrl(uri)) return false;
             try {
                 startActivity(new Intent(Intent.ACTION_VIEW, uri));
             } catch (ActivityNotFoundException ignored) {
@@ -132,16 +104,12 @@ public class MainActivity extends Activity {
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             if (request.isForMainFrame() && !"file".equals(request.getUrl().getScheme())) {
-                showSetup("Impossible de joindre le serveur " + serverUrl + ". Vérifiez qu'il est lancé et que vous êtes sur le même Wi-Fi.");
+                view.loadUrl(OFFLINE_URL);
             }
         }
 
         @Override
         public void onPageFinished(WebView view, String url) {
-            if (clearHistoryOnLoad && !url.startsWith("file:")) {
-                clearHistoryOnLoad = false;
-                view.clearHistory();
-            }
             CookieManager.getInstance().flush();
         }
     }
@@ -195,23 +163,8 @@ public class MainActivity extends Activity {
     /** Fonctions appelées par le site (window.WhatQuizAndroid). */
     private class Bridge {
         @JavascriptInterface
-        public void connect(String raw) {
-            String normalized = normalizeServer(raw);
-            runOnUiThread(() -> {
-                if (normalized == null) {
-                    showSetup("Adresse invalide. Exemple : 192.168.1.20:3000");
-                    return;
-                }
-                serverUrl = normalized;
-                prefs.edit().putString(KEY_SERVER, normalized).apply();
-                clearHistoryOnLoad = true;
-                web.loadUrl(normalized);
-            });
-        }
-
-        @JavascriptInterface
-        public void changeServer() {
-            runOnUiThread(() -> showSetup(null));
+        public void retry() {
+            runOnUiThread(() -> web.loadUrl(siteUrl));
         }
 
         @JavascriptInterface

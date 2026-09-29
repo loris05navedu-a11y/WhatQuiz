@@ -29,9 +29,21 @@ export function parseCookies(header: string | undefined): Record<string, string>
   return cookies;
 }
 
-/** Retrouve l'utilisateur associé au cookie de session (ou undefined). */
-export function userFromCookieHeader(services: Services, header: string | undefined): { user: PublicUser; token: string } | undefined {
-  const token = parseCookies(header)[SESSION_COOKIE];
+/** Mode « jeton » : le site est servi depuis un autre domaine (GitHub Pages) et ne peut pas compter sur un cookie. */
+export const TOKEN_MODE_HEADER = 'x-auth-mode';
+
+export function bearerToken(authorization: string | undefined): string | undefined {
+  const match = /^Bearer\s+([\w-]{20,200})$/.exec(authorization ?? '');
+  return match?.[1];
+}
+
+/** Retrouve l'utilisateur d'une session : jeton Bearer (site externe) ou cookie (même origine). */
+export function userFromCookieHeader(
+  services: Services,
+  header: string | undefined,
+  bearer?: string,
+): { user: PublicUser; token: string } | undefined {
+  const token = bearer ?? parseCookies(header)[SESSION_COOKIE];
   if (!token) return undefined;
   const userId = services.sessions.findUserId(token);
   const user = userId === null ? undefined : services.users.findById(userId);
@@ -40,7 +52,7 @@ export function userFromCookieHeader(services: Services, header: string | undefi
 
 export function loadUser(services: Services): RequestHandler {
   return (req, _res, next) => {
-    const found = userFromCookieHeader(services, req.headers.cookie);
+    const found = userFromCookieHeader(services, req.headers.cookie, bearerToken(req.headers.authorization));
     if (found) {
       req.user = found.user;
       req.sessionToken = found.token;
@@ -62,6 +74,8 @@ export const requireAdmin: RequestHandler = (req, _res, next) => {
   if (!req.user) return next(new HttpError(401, ERRORS.unauthenticated));
   next(req.user.isAdmin ? undefined : new HttpError(403, ERRORS.forbidden));
 };
+
+export const wantsToken = (req: { headers: Record<string, unknown> }): boolean => req.headers[TOKEN_MODE_HEADER] === 'token';
 
 export function setSessionCookie(services: Services, res: Response, token: string, expiresAt: number): void {
   res.cookie(SESSION_COOKIE, token, {

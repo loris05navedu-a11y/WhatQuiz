@@ -6,7 +6,7 @@ import type { AckResult, ClientToServerEvents, PublicUser, ServerToClientEvents 
 import { GameError } from '../game/errors';
 import { GameManager } from '../game/GameManager';
 import type { GameRoom, RoomTransport } from '../game/GameRoom';
-import { userFromCookieHeader } from '../http/auth';
+import { bearerToken, userFromCookieHeader } from '../http/auth';
 import { RateLimiter } from '../http/rateLimit';
 import type { Services } from '../services';
 import { answerPayloadSchema, hostActionSchema, joinSchema } from '../validation';
@@ -62,11 +62,17 @@ export function createRealtime(httpServer: HttpServer, services: Services): { io
     pingInterval: 20_000,
     pingTimeout: 25_000,
     maxHttpBufferSize: 16_000,
+    cors: services.config.corsOrigins.length > 0 ? { origin: services.config.corsOrigins } : undefined,
   });
   const manager = new GameManager(services.games, createTransport(() => io));
 
   io.on('connection', (socket: IoSocket) => {
-    socket.data.user = userFromCookieHeader(services, socket.handshake.headers.cookie)?.user;
+    const authToken = socket.handshake.auth?.token;
+    socket.data.user = userFromCookieHeader(
+      services,
+      socket.handshake.headers.cookie,
+      typeof authToken === 'string' ? bearerToken(`Bearer ${authToken}`) : undefined,
+    )?.user;
     socket.data.joinLimiter = new RateLimiter(15, 60_000);
     socket.data.reactLimiter = new RateLimiter(6, 5_000);
 
