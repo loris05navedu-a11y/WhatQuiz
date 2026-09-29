@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite';
 
 // JSX compilé directement par esbuild (intégré à Vite) : pas de plugin ni de Babel à installer.
+// BASE_PATH : sous-dossier de publication (ex. /WhatQuiz/ sur GitHub Pages). Par défaut, le site est à la racine.
 export default defineConfig({
   root: 'client',
+  base: process.env.BASE_PATH || '/',
   publicDir: 'public',
   esbuild: { jsx: 'automatic' },
   build: {

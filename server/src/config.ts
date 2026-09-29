@@ -20,6 +20,10 @@ export interface AppConfig {
   publicUrl: string | null;
   /** E-mails des administrateurs (variable ADMIN_EMAILS, séparés par des virgules). */
   adminEmails: string[];
+  /** Origines autorisées à appeler l'API depuis un autre domaine (ex. https://prenom.github.io). Vide = même origine uniquement. */
+  corsOrigins: string[];
+  /** Valeur « trust proxy » d'Express : nombre de proxys de confiance (1 derrière Render, Fly…) ou « loopback ». */
+  trustProxy: string | number;
   isProduction: boolean;
 }
 
@@ -37,6 +41,11 @@ export function loadConfig(): AppConfig {
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean),
     publicUrl: process.env.PUBLIC_URL?.trim().replace(/\/+$/, '') || null,
+    corsOrigins: (process.env.CORS_ORIGINS ?? '')
+      .split(',')
+      .map((origin) => origin.trim().replace(/\/+$/, ''))
+      .filter(Boolean),
+    trustProxy: /^\d+$/.test(process.env.TRUST_PROXY ?? '') ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY || 'loopback',
     isProduction: process.env.NODE_ENV === 'production',
   };
 }

@@ -1,5 +1,6 @@
 import { QUESTION_TYPE_LABELS } from '../../../shared/constants';
 import type { PublicQuestion } from '../../../shared/types';
+import { assetUrl } from '../lib/backend';
 
 export function QuestionMeta({ question }: { question: Pick<PublicQuestion, 'index' | 'total' | 'type' | 'points' | 'pointsEnabled'> }) {
   return (
@@ -18,7 +19,7 @@ export function QuestionStatement({ text, imageUrl, large }: { text: string; ima
   return (
     <div className={`question-statement${large ? ' large' : ''}`}>
       <h2 className="question-text">{text}</h2>
-      {imageUrl && <img className="question-image" src={imageUrl} alt="" loading="lazy" />}
+      {imageUrl && <img className="question-image" src={assetUrl(imageUrl)} alt="" loading="lazy" />}
     </div>
   );
 }

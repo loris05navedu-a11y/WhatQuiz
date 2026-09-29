@@ -14,6 +14,7 @@ import { useToast } from '../context/ToastContext';
 import { formatDateTime, formatNumber, formatPercent, formatRelative, plural } from '../lib/format';
 import { exportQuiz, importQuizFile } from '../lib/quizTransfer';
 import { useTestLauncher } from '../lib/useTestLauncher';
+import { assetUrl } from '../lib/backend';
 
 type SortKey = 'updated' | 'title' | 'games';
 
@@ -294,7 +295,7 @@ function QuizCard({ quiz, onChanged }: { quiz: QuizSummary; onChanged: () => voi
   return (
     <article className="card quiz-card">
       <Link to={`/quizzes/${quiz.id}/edit`} className="quiz-card-cover" aria-label={`Modifier ${quiz.title}`}>
-        {quiz.imageUrl ? <img src={quiz.imageUrl} alt="" loading="lazy" /> : <span aria-hidden="true">{quiz.title.charAt(0).toUpperCase()}</span>}
+        {quiz.imageUrl ? <img src={assetUrl(quiz.imageUrl)} alt="" loading="lazy" /> : <span aria-hidden="true">{quiz.title.charAt(0).toUpperCase()}</span>}
       </Link>
       <div className="quiz-card-body">
         {quiz.category && <span className="badge badge-brand">{quiz.category}</span>}

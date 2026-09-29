@@ -6,6 +6,8 @@ import { io as connect, type Socket } from 'socket.io-client';
 import type { ClientToServerEvents, QuizInput, ServerToClientEvents } from '../../shared/types';
 import { createApp, type WhatQuizApp } from '../src/app';
 
+export const TEST_PAGES_ORIGIN = 'https://prof.github.io';
+
 export interface TestServer {
   app: WhatQuizApp;
   url: string;
@@ -23,6 +25,8 @@ export async function startTestServer(): Promise<TestServer> {
     maxPlayers: 100,
     publicUrl: null,
     adminEmails: ['admin@test.fr'],
+    corsOrigins: [TEST_PAGES_ORIGIN],
+    trustProxy: 'loopback',
     isProduction: false,
   });
   await new Promise<void>((resolve) => app.httpServer.listen(0, '127.0.0.1', resolve));

@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { DEMO_QUIZ } from '../demo/demoQuiz';
 import { toPublicUser } from '../db/users';
-import { clearSessionCookie, requireAuth, setSessionCookie } from '../http/auth';
+import { clearSessionCookie, requireAuth, setSessionCookie, wantsToken } from '../http/auth';
 import { HttpError } from '../http/errors';
 import { rateLimit } from '../http/rateLimit';
 import type { Services } from '../services';
@@ -17,17 +17,19 @@ export function authRoutes(services: Services): Router {
   const router = Router();
   const authLimiter = rateLimit(20, 15 * 60_000);
 
-  function openSession(res: Parameters<typeof setSessionCookie>[1], userId: number): void {
+  /** Ouvre une session. En mode jeton, le jeton est renvoyé dans le corps (pas de cookie tiers). */
+  function openSession(req: Request, res: Response, userId: number): { token?: string } {
     const { token, expiresAt } = services.sessions.create(userId);
+    if (wantsToken(req)) return { token };
     setSessionCookie(services, res, token, expiresAt);
+    return {};
   }
 
   router.post('/register', authLimiter, async (req, res) => {
     const input = registerSchema.parse(req.body);
     if (services.users.findByEmail(input.email)) throw new HttpError(409, 'Un compte existe déjà avec cette adresse');
     const user = services.users.create({ ...input, passwordHash: await hashPassword(input.password) });
-    openSession(res, user.id);
-    res.status(201).json({ user: toPublicUser(user) });
+    res.status(201).json({ user: toPublicUser(user), ...openSession(req, res, user.id) });
   });
 
   router.post('/login', authLimiter, async (req, res) => {
@@ -36,8 +38,7 @@ export function authRoutes(services: Services): Router {
     dummyHash ??= hashPassword(randomBytes(8).toString('hex'));
     const valid = await verifyPassword(input.password, user?.passwordHash ?? (await dummyHash));
     if (!user || !valid) throw new HttpError(401, 'E-mail ou mot de passe incorrect');
-    openSession(res, user.id);
-    res.json({ user: toPublicUser(user) });
+    res.json({ user: toPublicUser(user), ...openSession(req, res, user.id) });
   });
 
   router.post('/logout', (req, res) => {
@@ -51,7 +52,7 @@ export function authRoutes(services: Services): Router {
   });
 
   /** Mode démo : compte professeur temporaire, prérempli avec le quiz de démonstration. */
-  router.post('/demo', authLimiter, async (_req, res) => {
+  router.post('/demo', authLimiter, async (req, res) => {
     services.users.purgeDemoAccounts(DEMO_ACCOUNT_TTL_HOURS);
     const suffix = randomBytes(6).toString('hex');
     const user = services.users.create({
@@ -62,8 +63,7 @@ export function authRoutes(services: Services): Router {
       isDemo: true,
     });
     services.quizzes.create(user.id, DEMO_QUIZ);
-    openSession(res, user.id);
-    res.status(201).json({ user: toPublicUser(user) });
+    res.status(201).json({ user: toPublicUser(user), ...openSession(req, res, user.id) });
   });
 
   return router;

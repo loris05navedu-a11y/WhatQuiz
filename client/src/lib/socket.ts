@@ -1,12 +1,14 @@
 import { io, type Socket } from 'socket.io-client';
 import type { AckResult, ClientToServerEvents, ServerToClientEvents } from '../../../shared/types';
 import { ERRORS } from '../../../shared/constants';
+import { API_ORIGIN, getToken } from './backend';
 
 export type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 export function createGameSocket(): GameSocket {
   // WebSocket direct (pas de long-polling) : moins de requêtes, plus fluide sur tablette.
-  return io({ transports: ['websocket'], reconnectionDelayMax: 4000 });
+  const options = { transports: ['websocket'], reconnectionDelayMax: 4000, auth: (send: (data: object) => void) => send({ token: getToken() ?? undefined }) };
+  return API_ORIGIN ? io(API_ORIGIN, options) : io(options);
 }
 
 /** Émet un événement avec acquittement, en échouant proprement si le serveur ne répond pas. */

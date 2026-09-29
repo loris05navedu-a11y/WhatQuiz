@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WhatQuiz</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px 16px;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    color: #fff;
+    background: linear-gradient(160deg, #1c1446, #3a1f8f);
+  }
+  main { width: 100%; max-width: 380px; display: grid; gap: 16px; text-align: center; }
+  svg { width: 72px; height: 72px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 26px; }
+  p { margin: 0; line-height: 1.5; color: rgb(255 255 255 / 78%); }
+  button {
+    min-height: 54px;
+    border: 0;
+    border-radius: 14px;
+    background: #5b3df5;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 700;
+    box-shadow: 0 10px 30px rgb(0 0 0 / 30%);
+  }
+  button:active { transform: scale(0.98); }
+</style>
+</head>
+<body>
+<main>
+  <svg viewBox="0 0 48 48" aria-hidden="true">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7b5cff"/><stop offset="1" stop-color="#4527d9"/></linearGradient></defs>
+    <path d="M10 4h28a8 8 0 0 1 8 8v20a8 8 0 0 1-8 8H22l-9 7v-7h-3a8 8 0 0 1-8-8V12a8 8 0 0 1 8-8z" fill="url(#g)"/>
+    <path d="M18.5 17.5a5.5 5.5 0 1 1 7.7 5.04c-1.35.6-2.2 1.6-2.2 3.06V27" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="24" cy="33" r="2.6" fill="#ff6b57"/>
+  </svg>
+  <h1>Connexion impossible</h1>
+  <p>WhatQuiz n’a pas pu être chargé. Vérifiez votre connexion Internet, puis réessayez.</p>
+  <button type="button" id="retry">Réessayer</button>
+</main>
+<script>
+  document.getElementById('retry').addEventListener('click', function () {
+    if (window.WhatQuizAndroid) window.WhatQuizAndroid.retry();
+  });
+</script>
+</body>
+</html>

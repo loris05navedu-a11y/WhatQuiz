@@ -25,9 +25,10 @@ aucune dépendance native à compiler, une seule commande pour démarrer, un seu
 12. [Sécurité](#sécurité)
 13. [PWA (application installable)](#pwa-application-installable)
 14. [Application Android (APK)](#application-android-apk)
-15. [Tests](#tests)
-16. [Déploiement](#déploiement)
-17. [Dépannage](#dépannage)
+15. [Publier le site sur GitHub Pages](#publier-le-site-sur-github-pages)
+16. [Tests](#tests)
+17. [Déploiement](#déploiement)
+18. [Dépannage](#dépannage)
 
 ---
 
@@ -220,6 +221,8 @@ Copiez `.env.example` en `.env` (jamais commité : il est dans `.gitignore`). To
 | `MAX_PLAYERS`   | `100`                  | Nombre maximum de joueurs par partie (valeur par défaut, 200 max).       |
 | `ADMIN_EMAILS`  | *(vide)*               | E-mails administrateurs (séparés par des virgules) : accès à `/admin` pour supprimer des comptes. |
 | `PUBLIC_URL`    | *(détection auto)*     | Adresse montrée aux élèves dans la salle d'attente et le QR code.        |
+| `CORS_ORIGINS`  | *(vide)*               | Domaines autorisés à appeler l'API (site sur GitHub Pages). Voir [Publier le site sur GitHub Pages](#publier-le-site-sur-github-pages). |
+| `TRUST_PROXY`   | `loopback`             | Proxys de confiance devant le serveur (`1` derrière un hébergeur).       |
 | `NODE_ENV`      | —                      | `production` est défini automatiquement par `npm start`.                 |
 
 Aucun secret n'est nécessaire : les sessions reposent sur des jetons aléatoires stockés (hachés) en base.
@@ -497,17 +500,18 @@ Les icônes peuvent être régénérées depuis `client/public/icons/icon.svg` a
 
 ## Application Android (APK)
 
-Le dossier `android/` contient une application Android native très légère (≈ 30 Ko, sans dépendance)
-qui affiche WhatQuiz en plein écran. Elle **ne contient pas le serveur** : elle se connecte au serveur
-WhatQuiz de la classe (Termux sur le téléphone du professeur, ordinateur, Raspberry Pi…).
+Le dossier `android/` contient une application Android native très légère (≈ 25 Ko, sans dépendance)
+qui affiche le site WhatQuiz publié sur **GitHub Pages** en plein écran. Aucune adresse à saisir : l'app
+s'ouvre directement sur le site.
 
-- Au premier lancement, saisissez l'adresse affichée par le serveur (ex. `192.168.1.20:3000` ;
-  sans port, `:3000` est ajouté). Elle est mémorisée.
-- Si le serveur est injoignable, l'écran de connexion réapparaît avec un message explicatif.
-- « Changer de serveur » : menu du compte, ou lien en bas de la page d'accueil.
+- L'adresse du site est dans `android/app/src/main/res/values/strings.xml` (`app_url`,
+  par défaut `https://loris05navedu-a11y.github.io/WhatQuiz/`) : modifiez-la puis recompilez si le compte
+  ou le dépôt change.
+- Sans connexion Internet, un écran « Connexion impossible » propose de réessayer.
 - Les exports (CSV des résultats, fichiers de quiz) sont enregistrés dans **Téléchargements/WhatQuiz**.
 - Le choix d'images (galerie/appareil photo) et l'import de fichiers passent par le sélecteur Android.
-- Les nouvelles fonctionnalités du site arrivent sans réinstaller l'APK : il suffit de mettre à jour le serveur.
+- Les nouveautés du site arrivent sans réinstaller l'APK : il suffit de redéployer GitHub Pages.
+- Seul le trafic HTTPS est autorisé.
 
 Installer l'APK : copiez `WhatQuiz.apk` sur le téléphone, ouvrez-le et autorisez l'installation
 depuis cette source (Android le demande une fois).
@@ -524,6 +528,62 @@ Pour une version signée, créez `android/keystore.properties` (non versionné) 
 `storeFile=…jks`, `storePassword=…`, `keyAlias=…`, `keyPassword=…`. Sans ce fichier, utilisez
 `./gradlew assembleDebug`. Une mise à jour de l'APK doit être signée avec la même clé ; sinon
 désinstallez l'ancienne version avant d'installer la nouvelle.
+
+---
+
+## Publier le site sur GitHub Pages
+
+GitHub Pages n'héberge que des **fichiers statiques** : il publie l'interface, pas le serveur. WhatQuiz a
+besoin d'un serveur Node.js (API, base SQLite, temps réel Socket.IO) qui doit tourner ailleurs.
+
+```
+Élèves / prof / APK  ──►  GitHub Pages (site)  ──►  votre serveur WhatQuiz (HTTPS)
+```
+
+### 1. Héberger le serveur (HTTPS obligatoire)
+
+Sur n'importe quel hébergeur Node.js ≥ 22.13 (Render, Railway, Fly.io, VPS, Raspberry Pi derrière un tunnel HTTPS…) :
+
+```bash
+npm ci && npm run build && npm start
+```
+
+Variables à définir sur le serveur :
+
+| Variable       | Exemple                                  | Rôle                                                              |
+| -------------- | ---------------------------------------- | ----------------------------------------------------------------- |
+| `CORS_ORIGINS` | `https://loris05navedu-a11y.github.io`   | Domaine du site GitHub Pages (sans chemin). Séparez par `,` si plusieurs. |
+| `TRUST_PROXY`  | `1`                                      | Nombre de proxys devant le serveur (1 sur Render/Fly/Railway) : nécessaire pour que la limitation de tentatives voie la vraie adresse de chaque utilisateur. |
+| `ADMIN_EMAILS` | `loris05.nav@gmail.com`                  | Administrateurs (facultatif).                                     |
+| `DATABASE_PATH`, `UPLOAD_DIR` | `/data/whatquiz.db`, `/data/uploads` | À placer sur un **disque persistant** : sans lui, comptes et quiz sont perdus à chaque redémarrage (cas des offres gratuites sans disque). |
+
+Sur Render : *New → Web Service*, build `npm ci && npm run build`, start `npm start`, variable
+`NODE_VERSION=22`. Notez l'adresse obtenue (ex. `https://whatquiz.onrender.com`).
+
+### 2. Publier le site
+
+1. Dépôt GitHub → **Settings → Pages → Source : GitHub Actions**.
+2. **Settings → Secrets and variables → Actions → Variables** : créez `API_URL` = adresse HTTPS du serveur (sans `/` final).
+3. Fusionnez la branche dans `main` (ou lancez le workflow à la main : *Actions → Déployer le site sur GitHub Pages → Run workflow*).
+
+Le workflow `.github/workflows/pages.yml` compile le site avec `BASE_PATH=/<nom-du-dépôt>/` et `VITE_API_URL=<API_URL>`,
+puis le publie. Le site est alors disponible sur `https://<compte>.github.io/<dépôt>/`. Le code QR de la salle
+d'attente pointe vers cette adresse.
+
+Compilation manuelle équivalente :
+
+```bash
+BASE_PATH=/WhatQuiz/ VITE_API_URL=https://whatquiz.onrender.com npm run build:client
+cp dist/client/index.html dist/client/404.html   # liens profonds (/join, /dashboard…)
+```
+
+### Différences avec l'hébergement sur le serveur lui-même
+
+- La connexion utilise un **jeton** (en-tête `Authorization`, stocké dans le navigateur) au lieu d'un cookie : les
+  cookies entre deux domaines sont bloqués par Safari et de plus en plus par Chrome. Le serveur reste compatible
+  avec le mode cookie classique (Termux, réseau local).
+- Les images des quiz restent stockées sur le serveur.
+- Sur une offre gratuite qui se met en veille, la première requête peut prendre plusieurs dizaines de secondes.
 
 ---
 

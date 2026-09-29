@@ -3,6 +3,7 @@ import express, { type Express } from 'express';
 import type { AppConfig } from './config';
 import type { GameManager } from './game/GameManager';
 import { loadUser, requireJsonForMutations } from './http/auth';
+import { cors } from './http/cors';
 import { errorHandler, notFound } from './http/errors';
 import { securityHeaders } from './http/security';
 import { adminRoutes } from './routes/admin';
@@ -30,8 +31,9 @@ export function createApp(config: AppConfig): WhatQuizApp {
 
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', 'loopback');
+  app.set('trust proxy', config.trustProxy);
   app.use(securityHeaders(config.isProduction));
+  app.use(cors(config.corsOrigins));
 
   const httpServer = createServer(app);
   const { io, manager } = createRealtime(httpServer, services);
