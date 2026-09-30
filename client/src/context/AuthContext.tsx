@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { PublicUser, Role } from '../../../shared/types';
 import { authApi } from '../api/endpoints';
+import { signInWithGoogle, signOutGoogle } from '../lib/google';
 
 interface AuthApi {
   user: PublicUser | null;
@@ -8,6 +9,8 @@ interface AuthApi {
   login(email: string, password: string): Promise<PublicUser>;
   register(input: { email: string; password: string; displayName: string; role: Role }): Promise<PublicUser>;
   startDemo(): Promise<PublicUser>;
+  /** Ouvre la fenêtre Google ; le rôle sert seulement si le compte n'existe pas encore sur cet appareil. */
+  loginWithGoogle(role: Role): Promise<PublicUser>;
   logout(): Promise<void>;
   setUser(user: PublicUser | null): void;
 }
@@ -39,8 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login: (email, password) => withUser(authApi.login(email, password)),
       register: (input) => withUser(authApi.register(input)),
       startDemo: () => withUser(authApi.demo()),
+      loginWithGoogle: async (role) => withUser(authApi.google(await signInWithGoogle(), role)),
       logout: async () => {
         await authApi.logout().catch(() => undefined);
+        await signOutGoogle();
         setUser(null);
       },
       setUser,

@@ -8,6 +8,7 @@ import { ThemeToggle } from '../components/ThemeToggle';
 import { homePathFor, useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { errorMessage } from '../api/client';
+import { FURIOUS_TUBE_URL } from '../lib/backend';
 
 const FEATURES: { icon: IconName; title: string; text: string }[] = [
   { icon: 'edit', title: 'Créez en quelques minutes', text: 'QCM, vrai/faux, réponses multiples ou texte libre, avec images et minuteur.' },
@@ -97,7 +98,9 @@ export function HomePage() {
           </article>
         ))}
       </section>
-      <footer className="container home-footer muted small">WhatQuiz — application libre pour la classe.</footer>
+      <footer className="container home-footer muted small">
+        WhatQuiz — application libre pour la classe. Découvrez aussi <a href={FURIOUS_TUBE_URL}>Furious-Tube</a>, le site vidéo associé.
+      </footer>
     </div>
   );
 }

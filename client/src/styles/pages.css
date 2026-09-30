@@ -182,6 +182,25 @@
   font-weight: 850;
 }
 
+.google-button {
+  gap: 10px;
+}
+
+.auth-separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+
+.auth-separator::before,
+.auth-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 /* ───────────── Tableau de bord ───────────── */
 .dashboard-grid {
   display: grid;

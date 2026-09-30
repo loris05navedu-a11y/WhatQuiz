@@ -155,6 +155,31 @@ describe('mode sans serveur (GitHub Pages)', () => {
     assert.equal(closedDoors, 1, 'la porte pair-à-pair est refermée avec la partie');
   });
 
+  it('ouvre ou crée le compte lié à un compte Google', async () => {
+    await localApi('POST', '/auth/logout');
+    const google = { uid: 'firebase-uid-1', email: 'Prof@Ecole.fr', displayName: 'Mme Prof (Google)' };
+    const { user: linked } = await localApi<{ user: PublicUser }>('POST', '/auth/google', google);
+    assert.equal(linked.id, teacher.id, 'le compte existant avec le même e-mail est relié à Google');
+
+    await localApi('POST', '/auth/logout');
+    const { user: again } = await localApi<{ user: PublicUser }>('POST', '/auth/google', { ...google, email: 'nouvelle@adresse.fr' });
+    assert.equal(again.id, teacher.id, 'reconnu ensuite par son identifiant Google');
+
+    await localApi('POST', '/auth/logout');
+    const { user: created } = await localApi<{ user: PublicUser }>('POST', '/auth/google', {
+      uid: 'firebase-uid-2',
+      email: 'eleve.google@gmail.com',
+      displayName: 'Inès',
+      role: 'student',
+    });
+    assert.deepEqual([created.role, created.displayName], ['student', 'Inès']);
+    await assert.rejects(localApi('POST', '/auth/login', { email: 'eleve.google@gmail.com', password: '' }), /incorrect/);
+    await localApi('PUT', '/account/password', { currentPassword: '', newPassword: 'motdepasse2' });
+    await localApi('POST', '/auth/logout');
+    await localApi('POST', '/auth/login', { email: 'eleve.google@gmail.com', password: 'motdepasse2' });
+    await localApi('POST', '/auth/logout');
+  });
+
   it('ajoute les parties terminées à l’historique d’un élève', async () => {
     await localApi('POST', '/auth/register', { email: 'eleve@ecole.fr', password: 'motdepasse1', displayName: 'Léo', role: 'student' });
     await recordPlayedGame({

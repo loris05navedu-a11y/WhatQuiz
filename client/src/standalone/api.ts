@@ -1,6 +1,7 @@
 import { ZodError } from 'zod';
 import { DEMO_QUIZ } from '../../../server/src/demo/demoQuiz';
 import { GameError } from '../../../server/src/game/errors';
+import { z } from 'zod';
 import {
   createGameSchema,
   embeddedQuizSchema,
@@ -58,6 +59,14 @@ interface Context {
   params: string[];
 }
 type Handler = (ctx: Context) => unknown;
+
+/** Profil transmis après la connexion Google (Firebase a vérifié l'identité auprès de Google). */
+const googleSchema = z.object({
+  uid: z.string().min(1).max(128),
+  email: z.string().trim().toLowerCase().email().max(160),
+  displayName: z.string().trim().max(60),
+  role: z.enum(['teacher', 'student']).default('teacher'),
+});
 
 const notFound = (message: string = ERRORS.notFound) => new ApiError(404, message);
 const forbidden = () => new ApiError(403, ERRORS.forbidden);
@@ -343,6 +352,28 @@ const routes: [HttpMethod, RegExp, Handler][] = [
   ],
   [
     'POST',
+    /^\/auth\/google$/,
+    (ctx) => {
+      const input = googleSchema.parse(ctx.body);
+      let user = [...ctx.d.users.values()].find((u) => u.googleUid === input.uid) ?? findByEmail(ctx.d, input.email);
+      if (user && !user.googleUid) {
+        user.googleUid = input.uid;
+        markDirty('user', user.id);
+      }
+      user ??= createUser(ctx.d, {
+        email: input.email,
+        displayName: (input.displayName || input.email.split('@')[0]).slice(0, 60),
+        role: input.role,
+        isDemo: false,
+        passwordHash: '',
+        googleUid: input.uid,
+      });
+      setSession(user.id);
+      return { user: toPublicUser(user) };
+    },
+  ],
+  [
+    'POST',
     /^\/auth\/logout$/,
     () => {
       setSession(null);
@@ -389,7 +420,10 @@ const routes: [HttpMethod, RegExp, Handler][] = [
       const user = requireAuth(ctx);
       const input = passwordChangeSchema.parse(ctx.body);
       if (user.isDemo) throw new ApiError(403, 'Le mot de passe du compte démo ne peut pas être modifié');
-      if (!(await verifyPassword(input.currentPassword, user.passwordHash))) throw new ApiError(400, 'Mot de passe actuel incorrect');
+      // Compte ouvert avec Google : le premier mot de passe se définit sans ancien mot de passe.
+      if (user.passwordHash && !(await verifyPassword(input.currentPassword, user.passwordHash))) {
+        throw new ApiError(400, 'Mot de passe actuel incorrect');
+      }
       user.passwordHash = await hashPassword(input.newPassword);
       markDirty('user', user.id);
       return { ok: true };

@@ -6,6 +6,7 @@ import { Icon } from './Icon';
 import { Logo } from './Logo';
 import { Menu } from './Menu';
 import { ThemeToggle } from './ThemeToggle';
+import { FURIOUS_TUBE_URL } from '../lib/backend';
 
 export function AppShell() {
   const { user, logout } = useAuth();
@@ -82,6 +83,9 @@ export function AppShell() {
                     <Icon name="users" /> Administration
                   </Link>
                 )}
+                <a role="menuitem" className="menu-item" href={FURIOUS_TUBE_URL} onClick={close}>
+                  <Icon name="play" /> Furious-Tube
+                </a>
                 <Link role="menuitem" className="menu-item" to="/settings" onClick={close}>
                   <Icon name="sliders" /> Paramètres du compte
                 </Link>
