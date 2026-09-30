@@ -30,5 +30,8 @@ export function assetUrl(url: string | null): string | null {
   return url && SEPARATE_BACKEND && url.startsWith('/uploads/') ? API_ORIGIN + url : url;
 }
 
+/** Site vidéo associé (même compte Google). */
+export const FURIOUS_TUBE_URL = 'https://loris05navedu-a11y.github.io/Furious-Tube/';
+
 /** Adresse publique du site, à communiquer aux élèves (code QR). */
 export const siteOrigin = (): string => window.location.origin + BASE_PATH.replace(/\/$/, '');

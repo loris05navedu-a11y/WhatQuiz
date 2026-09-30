@@ -566,6 +566,12 @@ pour les liens profonds (`/join`, `/dashboard`…) et le publie.
 - Les images sont intégrées au quiz (réduites à 800 px) au lieu d'être envoyées sur un serveur.
 - Un élève connecté à un compte élève sur son appareil retrouve ses parties dans « Mon espace ».
 - Le panneau d'administration n'existe pas dans ce mode (chaque appareil ne contient que ses propres comptes).
+- **Connexion Google** (« Continuer avec Google ») : elle passe par le projet Firebase de
+  [Furious-Tube](https://loris05navedu-a11y.github.io/Furious-Tube/), si bien qu'un même compte Google est reconnu
+  sur les deux sites. Firebase vérifie l'identité auprès de Google ; WhatQuiz ouvre ensuite le compte de cet appareil
+  (ou le relie au compte existant de même adresse e-mail). Les quiz restent sur l'appareil. À activer une fois :
+  console Firebase → *Authentication → Sign-in method → Google → Activer*. Google interdit cette connexion dans les
+  WebView : le bouton n'est pas proposé dans l'APK Android. Code : `client/src/lib/google.ts`.
 
 Compilation manuelle équivalente :
 

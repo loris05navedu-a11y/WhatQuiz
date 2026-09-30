@@ -12,6 +12,7 @@ import type {
   StudentHistoryEntry,
 } from '../../../shared/types';
 import { setToken } from '../lib/backend';
+import type { GoogleProfile } from '../lib/google';
 import { api } from './client';
 
 export type GameMode = 'live' | 'test-host' | 'test-player';
@@ -42,6 +43,7 @@ export const authApi = {
   register: (input: { email: string; password: string; displayName: string; role: Role }) =>
     openedSession(api<SessionResponse>('POST', '/auth/register', input)),
   demo: () => openedSession(api<SessionResponse>('POST', '/auth/demo')),
+  google: (profile: GoogleProfile, role: Role) => openedSession(api<SessionResponse>('POST', '/auth/google', { ...profile, role })),
   logout: async () => {
     try {
       return await api<{ ok: true }>('POST', '/auth/logout');

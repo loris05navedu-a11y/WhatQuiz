@@ -17,7 +17,10 @@ export interface LocalUser {
   role: Role;
   isDemo: boolean;
   createdAt: string;
+  /** Vide pour un compte ouvert avec Google (pas de mot de passe). */
   passwordHash: string;
+  /** Identifiant Firebase du compte Google lié. */
+  googleUid?: string;
 }
 
 export interface LocalPlayer {
