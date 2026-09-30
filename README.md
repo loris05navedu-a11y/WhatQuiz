@@ -566,12 +566,17 @@ pour les liens profonds (`/join`, `/dashboard`…) et le publie.
 - Les images sont intégrées au quiz (réduites à 800 px) au lieu d'être envoyées sur un serveur.
 - Un élève connecté à un compte élève sur son appareil retrouve ses parties dans « Mon espace ».
 - Le panneau d'administration n'existe pas dans ce mode (chaque appareil ne contient que ses propres comptes).
-- **Connexion Google** (« Continuer avec Google ») : elle passe par le projet Firebase de
-  [Furious-Tube](https://loris05navedu-a11y.github.io/Furious-Tube/), si bien qu'un même compte Google est reconnu
-  sur les deux sites. Firebase vérifie l'identité auprès de Google ; WhatQuiz ouvre ensuite le compte de cet appareil
-  (ou le relie au compte existant de même adresse e-mail). Les quiz restent sur l'appareil. À activer une fois :
-  console Firebase → *Authentication → Sign-in method → Google → Activer*. Google interdit cette connexion dans les
-  WebView : le bouton n'est pas proposé dans l'APK Android. Code : `client/src/lib/google.ts`.
+- **Comptes Furious-Tube acceptés, sans inscription** : WhatQuiz utilise le projet Firebase de
+  [Furious-Tube](https://loris05navedu-a11y.github.io/Furious-Tube/), à la même adresse de site, donc la même session.
+  - Déjà connecté sur Furious-Tube dans ce navigateur → « Compte Furious-Tube détecté : Continuer en tant que … »
+    (accueil et page de connexion), un clic suffit.
+  - Sinon, l'e-mail et le mot de passe Furious-Tube fonctionnent dans le formulaire de connexion de WhatQuiz.
+  - « Continuer avec Google » fonctionne aussi (fournisseur Google à activer dans la console Firebase). Google interdit
+    cette connexion dans les WebView : ce bouton n'est pas proposé dans l'APK Android.
+
+  Firebase vérifie l'identité ; WhatQuiz ouvre ensuite le compte de cet appareil, créé au besoin. Il n'est relié à un
+  compte WhatQuiz existant de même adresse que si Firebase a vérifié cette adresse. Les quiz restent sur l'appareil.
+  Se déconnecter de WhatQuiz ne ferme pas la session Furious-Tube. Code : `client/src/lib/firebaseAccount.ts`.
 
 Compilation manuelle équivalente :
 

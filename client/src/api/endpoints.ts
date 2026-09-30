@@ -12,7 +12,7 @@ import type {
   StudentHistoryEntry,
 } from '../../../shared/types';
 import { setToken } from '../lib/backend';
-import type { GoogleProfile } from '../lib/google';
+import type { FirebaseProfile } from '../lib/firebaseAccount';
 import { api } from './client';
 
 export type GameMode = 'live' | 'test-host' | 'test-player';
@@ -43,7 +43,8 @@ export const authApi = {
   register: (input: { email: string; password: string; displayName: string; role: Role }) =>
     openedSession(api<SessionResponse>('POST', '/auth/register', input)),
   demo: () => openedSession(api<SessionResponse>('POST', '/auth/demo')),
-  google: (profile: GoogleProfile, role: Role) => openedSession(api<SessionResponse>('POST', '/auth/google', { ...profile, role })),
+  /** Compte Google ou Furious-Tube (Firebase) : ouvre le compte de cet appareil, créé au besoin. */
+  firebase: (profile: FirebaseProfile, role: Role) => openedSession(api<SessionResponse>('POST', '/auth/firebase', { ...profile, role })),
   logout: async () => {
     try {
       return await api<{ ok: true }>('POST', '/auth/logout');

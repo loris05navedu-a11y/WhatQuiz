@@ -155,20 +155,35 @@ describe('mode sans serveur (GitHub Pages)', () => {
     assert.equal(closedDoors, 1, 'la porte pair-à-pair est refermée avec la partie');
   });
 
-  it('ouvre ou crée le compte lié à un compte Google', async () => {
+  it('ouvre ou crée le compte lié à un compte Google ou Furious-Tube', async () => {
     await localApi('POST', '/auth/logout');
-    const google = { uid: 'firebase-uid-1', email: 'Prof@Ecole.fr', displayName: 'Mme Prof (Google)' };
-    const { user: linked } = await localApi<{ user: PublicUser }>('POST', '/auth/google', google);
+    // Compte Furious-Tube à e-mail non vérifié : il ne peut pas prendre un compte existant de même adresse.
+    await assert.rejects(
+      localApi('POST', '/auth/firebase', { uid: 'ft-uid-x', email: 'prof@ecole.fr', emailVerified: false, displayName: 'Imposteur' }),
+      /existe déjà/,
+    );
+    const { user: ftUser } = await localApi<{ user: PublicUser }>('POST', '/auth/firebase', {
+      uid: 'ft-uid-3',
+      email: 'pseudo@furious.fr',
+      emailVerified: false,
+      displayName: 'furious_lolo',
+    });
+    assert.deepEqual([ftUser.displayName, ftUser.role], ['furious_lolo', 'teacher'], 'un compte Furious-Tube entre sans inscription');
+    await localApi('POST', '/auth/logout');
+
+    const google = { uid: 'firebase-uid-1', email: 'Prof@Ecole.fr', emailVerified: true, displayName: 'Mme Prof (Google)' };
+    const { user: linked } = await localApi<{ user: PublicUser }>('POST', '/auth/firebase', google);
     assert.equal(linked.id, teacher.id, 'le compte existant avec le même e-mail est relié à Google');
 
     await localApi('POST', '/auth/logout');
-    const { user: again } = await localApi<{ user: PublicUser }>('POST', '/auth/google', { ...google, email: 'nouvelle@adresse.fr' });
+    const { user: again } = await localApi<{ user: PublicUser }>('POST', '/auth/firebase', { ...google, email: 'nouvelle@adresse.fr' });
     assert.equal(again.id, teacher.id, 'reconnu ensuite par son identifiant Google');
 
     await localApi('POST', '/auth/logout');
-    const { user: created } = await localApi<{ user: PublicUser }>('POST', '/auth/google', {
+    const { user: created } = await localApi<{ user: PublicUser }>('POST', '/auth/firebase', {
       uid: 'firebase-uid-2',
       email: 'eleve.google@gmail.com',
+      emailVerified: true,
       displayName: 'Inès',
       role: 'student',
     });

@@ -9,6 +9,7 @@ import { homePathFor, useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { errorMessage } from '../api/client';
 import { FURIOUS_TUBE_URL } from '../lib/backend';
+import { FuriousTubeContinue } from '../components/FuriousTubeContinue';
 
 const FEATURES: { icon: IconName; title: string; text: string }[] = [
   { icon: 'edit', title: 'Créez en quelques minutes', text: 'QCM, vrai/faux, réponses multiples ou texte libre, avec images et minuteur.' },
@@ -62,6 +63,7 @@ export function HomePage() {
             WhatQuiz permet aux enseignants de créer des quiz, de les tester, puis de les animer en direct avec leurs élèves — sur
             n’importe quelle tablette.
           </p>
+          <FuriousTubeContinue />
           <div className="row">
             {user?.role === 'teacher' ? (
               <LinkButton to="/quizzes/new" variant="primary" size="lg" icon="plus">

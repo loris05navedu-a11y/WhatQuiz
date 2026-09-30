@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { PublicUser, Role } from '../../../shared/types';
+import { ApiError } from '../api/errors';
 import { authApi } from '../api/endpoints';
-import { signInWithGoogle, signOutGoogle } from '../lib/google';
+import { FIREBASE_ACCOUNTS, signInWithFuriousTube, signInWithGoogle, type FirebaseProfile } from '../lib/firebaseAccount';
 
 interface AuthApi {
   user: PublicUser | null;
@@ -11,6 +12,8 @@ interface AuthApi {
   startDemo(): Promise<PublicUser>;
   /** Ouvre la fenêtre Google ; le rôle sert seulement si le compte n'existe pas encore sur cet appareil. */
   loginWithGoogle(role: Role): Promise<PublicUser>;
+  /** Compte Furious-Tube déjà connecté dans ce navigateur : entrée directe, sans inscription. */
+  continueWithFuriousTube(profile: FirebaseProfile): Promise<PublicUser>;
   logout(): Promise<void>;
   setUser(user: PublicUser | null): void;
 }
@@ -39,13 +42,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loading,
-      login: (email, password) => withUser(authApi.login(email, password)),
+      // Compte WhatQuiz de cet appareil, sinon compte Furious-Tube avec les mêmes identifiants.
+      login: async (email, password) => {
+        try {
+          return await withUser(authApi.login(email, password));
+        } catch (error) {
+          if (!FIREBASE_ACCOUNTS || !(error instanceof ApiError) || error.status !== 401) throw error;
+          const profile = await signInWithFuriousTube(email, password).catch((firebaseError: unknown) => {
+            throw firebaseError instanceof ApiError && firebaseError.status !== 401 ? firebaseError : error;
+          });
+          return withUser(authApi.firebase(profile, 'teacher'));
+        }
+      },
       register: (input) => withUser(authApi.register(input)),
       startDemo: () => withUser(authApi.demo()),
-      loginWithGoogle: async (role) => withUser(authApi.google(await signInWithGoogle(), role)),
+      loginWithGoogle: async (role) => withUser(authApi.firebase(await signInWithGoogle(), role)),
+      continueWithFuriousTube: (profile) => withUser(authApi.firebase(profile, 'teacher')),
       logout: async () => {
+        // La session Furious-Tube (autre site) reste ouverte : seule celle de WhatQuiz est fermée.
         await authApi.logout().catch(() => undefined);
-        await signOutGoogle();
         setUser(null);
       },
       setUser,

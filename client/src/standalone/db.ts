@@ -17,9 +17,11 @@ export interface LocalUser {
   role: Role;
   isDemo: boolean;
   createdAt: string;
-  /** Vide pour un compte ouvert avec Google (pas de mot de passe). */
+  /** Vide pour un compte ouvert avec Google ou Furious-Tube (pas de mot de passe WhatQuiz). */
   passwordHash: string;
-  /** Identifiant Firebase du compte Google lié. */
+  /** Compte Firebase lié (Google ou Furious-Tube). */
+  firebaseUid?: string;
+  /** Ancien nom du champ (première version de la connexion Google). */
   googleUid?: string;
 }
 

@@ -60,10 +60,11 @@ interface Context {
 }
 type Handler = (ctx: Context) => unknown;
 
-/** Profil transmis après la connexion Google (Firebase a vérifié l'identité auprès de Google). */
-const googleSchema = z.object({
+/** Compte Firebase (Google ou Furious-Tube) dont Firebase a vérifié l'identité. */
+const firebaseSchema = z.object({
   uid: z.string().min(1).max(128),
   email: z.string().trim().toLowerCase().email().max(160),
+  emailVerified: z.boolean().default(false),
   displayName: z.string().trim().max(60),
   role: z.enum(['teacher', 'student']).default('teacher'),
 });
@@ -344,7 +345,7 @@ const routes: [HttpMethod, RegExp, Handler][] = [
       const input = loginSchema.parse(ctx.body);
       const user = findByEmail(ctx.d, input.email);
       if (!user || !(await verifyPassword(input.password, user.passwordHash))) {
-        throw new ApiError(401, 'E-mail ou mot de passe incorrect (les comptes sont enregistrés sur cet appareil)');
+        throw new ApiError(401, 'E-mail ou mot de passe incorrect');
       }
       setSession(user.id);
       return { user: toPublicUser(user) };
@@ -352,13 +353,21 @@ const routes: [HttpMethod, RegExp, Handler][] = [
   ],
   [
     'POST',
-    /^\/auth\/google$/,
+    /^\/auth\/firebase$/,
     (ctx) => {
-      const input = googleSchema.parse(ctx.body);
-      let user = [...ctx.d.users.values()].find((u) => u.googleUid === input.uid) ?? findByEmail(ctx.d, input.email);
-      if (user && !user.googleUid) {
-        user.googleUid = input.uid;
-        markDirty('user', user.id);
+      const input = firebaseSchema.parse(ctx.body);
+      let user = [...ctx.d.users.values()].find((u) => u.firebaseUid === input.uid || u.googleUid === input.uid);
+      if (!user) {
+        const sameEmail = findByEmail(ctx.d, input.email);
+        // Relier par e-mail seulement si Firebase a vérifié l'adresse : sinon n'importe qui pourrait prendre ce compte.
+        if (sameEmail && !input.emailVerified) {
+          throw new ApiError(409, 'Un compte WhatQuiz existe déjà avec cette adresse sur cet appareil : connectez-vous avec son mot de passe');
+        }
+        if (sameEmail) {
+          sameEmail.firebaseUid = input.uid;
+          markDirty('user', sameEmail.id);
+        }
+        user = sameEmail;
       }
       user ??= createUser(ctx.d, {
         email: input.email,
@@ -366,7 +375,7 @@ const routes: [HttpMethod, RegExp, Handler][] = [
         role: input.role,
         isDemo: false,
         passwordHash: '',
-        googleUid: input.uid,
+        firebaseUid: input.uid,
       });
       setSession(user.id);
       return { user: toPublicUser(user) };

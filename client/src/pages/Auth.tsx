@@ -9,7 +9,8 @@ import { Logo } from '../components/Logo';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { homePathFor, useAuth } from '../context/AuthContext';
 import { STANDALONE } from '../lib/backend';
-import { GOOGLE_AVAILABLE, preloadGoogle } from '../lib/google';
+import { GOOGLE_AVAILABLE, preloadFirebase } from '../lib/firebaseAccount';
+import { FuriousTubeContinue } from '../components/FuriousTubeContinue';
 
 function AuthLayout({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
@@ -38,12 +39,12 @@ function GoogleLogo() {
   );
 }
 
-/** Bouton « Continuer avec Google » (même compte Google que sur Furious-Tube). */
+/** Bouton « Continuer avec Google » (compte partagé avec Furious-Tube). */
 function GoogleButton({ role, onDone, onError }: { role: Role; onDone: (user: PublicUser) => void; onError: (message: string) => void }) {
   const { loginWithGoogle } = useAuth();
   const [pending, setPending] = useState(false);
   useEffect(() => {
-    if (GOOGLE_AVAILABLE) void preloadGoogle().catch(() => undefined);
+    if (GOOGLE_AVAILABLE) void preloadFirebase().catch(() => undefined);
   }, []);
   if (!GOOGLE_AVAILABLE) return null;
 
@@ -99,13 +100,17 @@ export function LoginPage() {
   };
 
   return (
-    <AuthLayout title="Connexion" subtitle="Heureux de vous revoir !">
+    <AuthLayout
+      title="Connexion"
+      subtitle={STANDALONE ? 'Avec votre compte WhatQuiz ou votre compte Furious-Tube, sans inscription.' : 'Heureux de vous revoir !'}
+    >
       <form className="stack" onSubmit={submit}>
         {error && (
           <p className="alert" role="alert">
             {error}
           </p>
         )}
+        <FuriousTubeContinue next={safeNext(params.get('next'))} />
         <GoogleButton
           role="teacher"
           onDone={(logged) => navigate(safeNext(params.get('next')) ?? homePathFor(logged), { replace: true })}
