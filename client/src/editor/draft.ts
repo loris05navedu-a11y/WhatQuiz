@@ -66,14 +66,27 @@ export function convertQuestion(question: DraftQuestion, type: QuestionType): Dr
 }
 
 export function toDraft(quiz?: Quiz): DraftQuiz {
-  if (!quiz) return { title: '', description: '', imageUrl: null, category: CATEGORIES[0], questions: [createQuestion('single')] };
+  if (!quiz) {
+    return { title: '', description: '', imageUrl: null, category: CATEGORIES[0], status: 'draft', visibility: 'private', tags: [], subcategory: '', level: '', difficulty: null, questions: [createQuestion('single')] };
+  }
   return {
     title: quiz.title,
     description: quiz.description,
     imageUrl: quiz.imageUrl,
     category: quiz.category,
+    status: quiz.status,
+    visibility: quiz.visibility,
+    subcategory: quiz.subcategory,
+    tags: quiz.tags,
+    difficulty: quiz.difficulty,
+    level: quiz.level,
     questions: quiz.questions.map(({ id: _id, position: _position, ...question }) => ({ explanation: '', bonus: false, media: [], ...question, key: newKey() })),
   };
+}
+
+/** Brouillon rechargé depuis une version enregistrée ou une sauvegarde locale. */
+export function fromInput(input: QuizInput): DraftQuiz {
+  return { ...input, questions: input.questions.map((question) => ({ explanation: '', bonus: false, media: [], ...question, key: newKey() })) };
 }
 
 export function toInput(draft: DraftQuiz): QuizInput {

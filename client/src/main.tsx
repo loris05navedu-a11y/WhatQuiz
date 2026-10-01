@@ -6,6 +6,7 @@ import './styles/components.css';
 import './styles/pages.css';
 import './styles/game.css';
 import './styles/types.css';
+import './styles/editor.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

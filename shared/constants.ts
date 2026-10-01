@@ -34,6 +34,9 @@ export const DEFAULT_TIME_LIMIT = 20;
 export const DEFAULT_POINTS = 1000;
 
 export const LIMITS = {
+  tag: 30,
+  tagsPerQuiz: 10,
+  subcategory: 40,
   quizTitle: 120,
   quizDescription: 500,
   category: 40,
@@ -71,6 +74,40 @@ export const CATEGORIES = [
 ] as const;
 
 export const GAME_CODE_LENGTH = 6;
+
+/** Codes de partage lisibles : sans 0/O, 1/I/L. */
+export const SHARE_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const SHARE_CODE_LENGTH = 6;
+
+export const DIFFICULTY_LABELS = { easy: 'Facile', medium: 'Moyen', hard: 'Difficile' } as const;
+
+export const SCHOOL_LEVELS = [
+  'Maternelle',
+  'CP',
+  'CE1',
+  'CE2',
+  'CM1',
+  'CM2',
+  '6e',
+  '5e',
+  '4e',
+  '3e',
+  '2nde',
+  '1re',
+  'Terminale',
+  'Supérieur',
+  'Adultes',
+] as const;
+
+/** Sous-catégories proposées (saisie libre possible). */
+export const SUBCATEGORIES: Partial<Record<(typeof CATEGORIES)[number], string[]>> = {
+  Mathématiques: ['Algèbre', 'Équations', 'Géométrie', 'Arithmétique', 'Fractions', 'Fonctions', 'Probabilités', 'Statistiques', 'Calcul mental'],
+  Français: ['Grammaire', 'Conjugaison', 'Orthographe', 'Vocabulaire', 'Littérature'],
+  'Histoire-Géographie': ['Antiquité', 'Moyen Âge', 'Époque moderne', 'XXe siècle', 'Géographie', 'Éducation civique'],
+  Sciences: ['Physique', 'Chimie', 'Biologie', 'Géologie', 'Astronomie', 'Technologie'],
+  Anglais: ['Vocabulaire', 'Grammaire', 'Compréhension', 'Civilisation'],
+  Informatique: ['Algorithmique', 'Programmation', 'Réseaux', 'Numérique responsable'],
+};
 
 /** Réactions que les élèves peuvent envoyer à l'écran du professeur. */
 export const REACTIONS = ['👍', '👏', '😂', '😮', '🤔', '🔥'] as const;

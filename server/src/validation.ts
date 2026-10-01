@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { CATEGORIES, LIMITS, QUESTION_TYPES, TIME_LIMITS } from '../../shared/constants';
 import { isValidMediaUrl, LOCAL_ASSET, MAX_MEDIA_PER_QUESTION } from '../../shared/media';
 import { normalizeQuestion } from '../../shared/questionTypes';
+import { cleanTags } from '../../shared/quizMeta';
 import { questionProblem } from '../../shared/quizRules';
 
 z.config(z.locales.fr());
@@ -92,19 +93,30 @@ const buildQuizSchema = (allowEmbedded: boolean) => {
       media,
       config: configSchema,
     })
-    .transform((question) => normalizeQuestion(question))
-    .superRefine((question, ctx) => {
-      const problem = questionProblem(question);
-      if (problem) ctx.addIssue({ code: 'custom', message: problem });
-    });
+    .transform((question) => normalizeQuestion(question));
 
-  return z.object({
-    title: trimmed(LIMITS.quizTitle).min(1, 'Le titre du quiz est obligatoire'),
-    description: trimmed(LIMITS.quizDescription).default(''),
-    imageUrl,
-    category: trimmed(LIMITS.category).default(CATEGORIES[0]),
-    questions: z.array(questionSchema).max(LIMITS.questionsPerQuiz, `${LIMITS.questionsPerQuiz} questions maximum`),
-  });
+  return z
+    .object({
+      title: trimmed(LIMITS.quizTitle).min(1, 'Le titre du quiz est obligatoire'),
+      description: trimmed(LIMITS.quizDescription).default(''),
+      imageUrl,
+      category: trimmed(LIMITS.category).default(CATEGORIES[0]),
+      questions: z.array(questionSchema).max(LIMITS.questionsPerQuiz, `${LIMITS.questionsPerQuiz} questions maximum`),
+      status: z.enum(['draft', 'published']).default('published'),
+      visibility: z.enum(['private', 'code', 'public']).default('private'),
+      subcategory: trimmed(LIMITS.subcategory).default(''),
+      tags: z.array(z.string().max(100)).max(50).default([]).transform(cleanTags),
+      difficulty: z.enum(['easy', 'medium', 'hard']).nullable().default(null),
+      level: trimmed(LIMITS.category).default(''),
+    })
+    .superRefine((quiz, ctx) => {
+      // Un brouillon peut être incomplet ; un quiz publié doit être entièrement valide.
+      if (quiz.status === 'draft') return;
+      quiz.questions.forEach((question, index) => {
+        const problem = questionProblem(question);
+        if (problem) ctx.addIssue({ code: 'custom', message: problem, path: ['questions', index] });
+      });
+    });
 };
 
 export const quizSchema = buildQuizSchema(false);

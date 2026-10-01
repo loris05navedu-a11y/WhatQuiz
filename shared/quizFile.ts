@@ -104,6 +104,18 @@ function parseConfig(raw: Record<string, unknown>): QuestionConfig {
   return config;
 }
 
+/** Questions copiées (presse-papiers) : chaque question est vérifiée, les illisibles sont écartées. */
+export function parseQuestionList(raw: unknown): QuestionInput[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, LIMITS.questionsPerQuiz).flatMap((question, index) => {
+    try {
+      return [parseQuestion(question, index)];
+    } catch {
+      return [];
+    }
+  });
+}
+
 /** Lit un fichier exporté par WhatQuiz. Lève une QuizFileError au message lisible si le fichier est invalide. */
 export function parseQuizFile(content: string): QuizInput {
   let data: unknown;

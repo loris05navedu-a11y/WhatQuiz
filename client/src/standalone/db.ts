@@ -1,7 +1,8 @@
 import type { FinalPlayerResult, QuizSnapshot } from '../../../server/src/db/games';
 import type { RoomStore } from '../../../server/src/game/GameRoom';
+import type { DocStore, StoredDoc } from '../../../shared/documents';
 import { randomToken } from '../../../shared/random';
-import type { GameSettings, GameSummary, PublicUser, Quiz, Role, StudentHistoryEntry, SubmittedAnswer } from '../../../shared/types';
+import type { GameSettings, GameSummary, PublicUser, Quiz, QuizMeta, Role, StudentHistoryEntry, SubmittedAnswer } from '../../../shared/types';
 import { readStorage, writeStorage } from '../lib/storage';
 
 /**
@@ -65,19 +66,33 @@ export interface LocalHistory extends StudentHistoryEntry {
   userId: number;
 }
 
+/** Quiz enregistré dans le navigateur (`deletedAt` : dans la corbeille). */
+export type LocalQuiz = Quiz & { deletedAt?: string | null };
+
+/** Document générique (shared/documents), rangé sous la clé `kind|id`. */
+export type LocalDoc = StoredDoc & { kind: string };
+
 type Tables = {
   user: Map<number, LocalUser>;
-  quiz: Map<number, Quiz>;
+  quiz: Map<number, LocalQuiz>;
   game: Map<string, LocalGame>;
   history: Map<string, LocalHistory>;
+  doc: Map<string, LocalDoc>;
 };
 type Kind = keyof Tables;
 
 export interface LocalData {
   users: Map<number, LocalUser>;
-  quizzes: Map<number, Quiz>;
+  quizzes: Map<number, LocalQuiz>;
   games: Map<string, LocalGame>;
   history: Map<string, LocalHistory>;
+  docs: Map<string, LocalDoc>;
+}
+
+/** Quiz enregistrés avant l'ajout des métadonnées : valeurs par défaut. */
+function withMeta(quiz: LocalQuiz): LocalQuiz {
+  const defaults: QuizMeta = { status: 'published', visibility: 'private', accessCode: null, subcategory: '', tags: [], difficulty: null, level: '' };
+  return Object.assign(defaults, quiz);
 }
 
 const DB_NAME = 'whatquiz';
@@ -118,7 +133,7 @@ let idb: Promise<IDBDatabase | null> | null = null;
 export const database = () => (idb ??= openIdb());
 
 async function readAll(): Promise<LocalData> {
-  const fresh: LocalData = { users: new Map(), quizzes: new Map(), games: new Map(), history: new Map() };
+  const fresh: LocalData = { users: new Map(), quizzes: new Map(), games: new Map(), history: new Map(), docs: new Map() };
   const db = await database();
   if (!db) return fresh;
   const entries = await new Promise<[string, unknown][]>((resolve) => {
@@ -135,15 +150,16 @@ async function readAll(): Promise<LocalData> {
   for (const [key, value] of entries) {
     const kind = key.slice(0, key.indexOf(':')) as Kind;
     if (kind === 'user') fresh.users.set((value as LocalUser).id, value as LocalUser);
-    else if (kind === 'quiz') fresh.quizzes.set((value as Quiz).id, value as Quiz);
+    else if (kind === 'quiz') fresh.quizzes.set((value as Quiz).id, withMeta(value as LocalQuiz));
     else if (kind === 'game') fresh.games.set((value as LocalGame).id, value as LocalGame);
     else if (kind === 'history') fresh.history.set(key.slice(8), value as LocalHistory);
+    else if (kind === 'doc') fresh.docs.set(key.slice(4), value as LocalDoc);
   }
   return fresh;
 }
 
 function tables(d: LocalData): Tables {
-  return { user: d.users, quiz: d.quizzes, game: d.games, history: d.history };
+  return { user: d.users, quiz: d.quizzes, game: d.games, history: d.history, doc: d.docs };
 }
 
 /** Parties hébergées par cet onglet : leur version en mémoire fait foi. */
@@ -336,3 +352,30 @@ export const gameStore: RoomStore & {
     });
   },
 };
+
+/* ───────────── Documents (services partagés) ───────────── */
+
+export function localDocStore(d: LocalData): DocStore {
+  const key = (kind: string, id: string) => `${kind}|${id}`;
+  return {
+    get: <T extends StoredDoc>(kind: string, id: string) => {
+      const doc = d.docs.get(key(kind, id));
+      if (!doc) return undefined;
+      const { kind: _kind, ...rest } = doc;
+      return rest as unknown as T;
+    },
+    list: <T extends StoredDoc>(kind: string, ownerId?: number) =>
+      [...d.docs.values()]
+        .filter((doc) => doc.kind === kind && (ownerId === undefined || doc.ownerId === ownerId))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .map(({ kind: _kind, ...rest }) => rest as unknown as T),
+    put: (kind, doc) => {
+      d.docs.set(key(kind, doc.id), { ...structuredClone(doc), kind });
+      markDirty('doc', key(kind, doc.id));
+    },
+    delete: (kind, id) => {
+      d.docs.delete(key(kind, id));
+      markDirty('doc', key(kind, id));
+    },
+  };
+}

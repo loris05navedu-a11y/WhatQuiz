@@ -1,5 +1,6 @@
 import { Router, type Request } from 'express';
 import { ERRORS } from '../../../shared/constants';
+import { quizProblems } from '../../../shared/quizRules';
 import type { GameRoom } from '../game/GameRoom';
 import type { GameManager } from '../game/GameManager';
 import { requireTeacher } from '../http/auth';
@@ -33,6 +34,8 @@ export function gameRoutes(services: Services, manager: GameManager): Router {
     const input = createGameSchema.parse(req.body);
     const quiz = loadOwnedQuiz(services, req, input.quizId);
     if (quiz.questions.length === 0) throw new HttpError(400, 'Ajoutez au moins une question avant de lancer une partie');
+    const problems = quizProblems(quiz);
+    if (problems.length > 0) throw new HttpError(400, `Corrigez le quiz avant de le lancer — ${problems[0]}`);
     const isTest = input.mode !== 'live';
     const room = manager.create({
       hostUserId: req.user!.id,

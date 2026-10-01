@@ -1,7 +1,13 @@
 import { ZodError } from 'zod';
 import { DEMO_QUIZ } from '../../../server/src/demo/demoQuiz';
 import { GameError } from '../../../server/src/game/errors';
+import { ServiceError } from '../../../shared/documents';
 import { isScored } from '../../../shared/questionTypes';
+import { generateShareCode, isShareCode, normalizeShareCode, quizMetaFrom, toQuizInput } from '../../../shared/quizMeta';
+import { quizProblems } from '../../../shared/quizRules';
+import { matchSharedRoute } from '../../../shared/services';
+import type { QuizGateway } from '../../../shared/services/context';
+import { deleteQuizVersions, recordQuizVersion } from '../../../shared/services/versions';
 import { z } from 'zod';
 import {
   createGameSchema,
@@ -22,7 +28,6 @@ import type {
   PlayerView,
   Question,
   QuestionStat,
-  Quiz,
   QuizInput,
   QuizSummary,
 } from '../../../shared/types';
@@ -37,8 +42,10 @@ import {
   sessionUser,
   setSession,
   toPublicUser,
+  localDocStore,
   type LocalData,
   type LocalGame,
+  type LocalQuiz,
   type LocalUser,
 } from './db';
 import { hub } from './hub';
@@ -55,6 +62,7 @@ interface Context {
   user: LocalUser | null;
   body: unknown;
   params: string[];
+  query: Record<string, string>;
 }
 type Handler = (ctx: Context) => unknown;
 
@@ -114,10 +122,10 @@ function findByEmail(d: LocalData, email: string): LocalUser | undefined {
   return [...d.users.values()].find((u) => u.email.toLowerCase() === key);
 }
 
-function ownedQuiz(ctx: Context, rawId: unknown): Quiz {
+function ownedQuiz(ctx: Context, rawId: unknown): LocalQuiz {
   const user = requireTeacher(ctx);
   const quiz = ctx.d.quizzes.get(Number(rawId));
-  if (!quiz) throw notFound('Quiz introuvable');
+  if (!quiz || quiz.deletedAt) throw notFound('Quiz introuvable');
   if (quiz.ownerId !== user.id) throw forbidden();
   return quiz;
 }
@@ -159,23 +167,29 @@ function purgeDemoAccounts(d: LocalData): void {
 /* ───────────── Quiz ───────────── */
 
 function toQuestions(input: QuizInput): Question[] {
-  return input.questions.map((question, position) => ({
-    ...question,
-    id: position + 1,
-    position,
-    answers: question.answers.map((a) => ({ text: a.text, isCorrect: a.isCorrect })),
-  }));
+  return input.questions.map((question, position) => ({ ...structuredClone(question), id: position + 1, position }));
 }
 
-function createQuiz(d: LocalData, ownerId: number, input: QuizInput): Quiz {
+/** Code d'accès unique, attribué dès que le quiz est partagé (et conservé ensuite). */
+function accessCodeFor(d: LocalData, input: QuizInput, current: string | null): string | null {
+  if (current || (input.visibility ?? 'private') === 'private') return current;
+  const used = new Set([...d.quizzes.values()].map((q) => q.accessCode));
+  for (;;) {
+    const code = generateShareCode();
+    if (!used.has(code)) return code;
+  }
+}
+
+function createQuiz(d: LocalData, ownerId: number, input: QuizInput): LocalQuiz {
   const now = nowIso();
-  const quiz: Quiz = {
+  const quiz: LocalQuiz = {
     id: nextNumericId(d.quizzes),
     ownerId,
     title: input.title,
     description: input.description,
     imageUrl: input.imageUrl,
     category: input.category,
+    ...quizMetaFrom(input, accessCodeFor(d, input, null)),
     questions: toQuestions(input),
     createdAt: now,
     updatedAt: now,
@@ -185,9 +199,25 @@ function createQuiz(d: LocalData, ownerId: number, input: QuizInput): Quiz {
   return quiz;
 }
 
+function updateQuiz(d: LocalData, quiz: LocalQuiz, input: QuizInput): LocalQuiz {
+  Object.assign(quiz, {
+    title: input.title,
+    description: input.description,
+    imageUrl: input.imageUrl,
+    category: input.category,
+    ...quizMetaFrom(input, accessCodeFor(d, input, quiz.accessCode)),
+    questions: toQuestions(input),
+    updatedAt: nowIso(),
+  });
+  markDirty('quiz', quiz.id);
+  return quiz;
+}
+
 function deleteQuiz(d: LocalData, quizId: number): void {
+  const quiz = d.quizzes.get(quizId);
   d.quizzes.delete(quizId);
   markDirty('quiz', quizId);
+  if (quiz) deleteQuizVersions(localDocStore(d), quiz.ownerId, quizId);
   for (const game of d.games.values()) {
     if (game.quizId !== quizId) continue;
     game.quizId = null;
@@ -195,9 +225,38 @@ function deleteQuiz(d: LocalData, quizId: number): void {
   }
 }
 
-function quizInput({ id: _id, ownerId: _o, createdAt: _c, updatedAt: _u, questions, ...rest }: Quiz): QuizInput {
-  return { ...rest, questions: questions.map(({ id: _qid, position: _p, ...question }) => question) };
+function quizSummary(d: LocalData, q: LocalQuiz): QuizSummary {
+  return {
+    id: q.id,
+    title: q.title,
+    description: q.description,
+    category: q.category,
+    imageUrl: q.imageUrl,
+    status: q.status,
+    visibility: q.visibility,
+    accessCode: q.accessCode,
+    subcategory: q.subcategory,
+    tags: q.tags,
+    difficulty: q.difficulty,
+    level: q.level,
+    questionCount: q.questions.length,
+    gameCount: [...d.games.values()].filter((g) => g.status === 'ended' && g.quizId === q.id).length,
+    createdAt: q.createdAt,
+    updatedAt: q.updatedAt,
+  };
 }
+
+function sharedQuiz(d: LocalData, rawCode: string): LocalQuiz {
+  const code = normalizeShareCode(rawCode);
+  const quiz = isShareCode(code)
+    ? [...d.quizzes.values()].find((q) => q.accessCode === code && q.visibility !== 'private' && q.status === 'published' && !q.deletedAt)
+    : undefined;
+  if (!quiz) throw notFound('Aucun quiz partagé ne correspond à ce code');
+  return quiz;
+}
+
+const saveVersion = (d: LocalData, quiz: LocalQuiz, reason: 'save' | 'autosave') =>
+  recordQuizVersion(localDocStore(d), quiz.ownerId, quiz.id, toQuizInput(quiz), reason, new Date());
 
 /* ───────────── Parties et statistiques ───────────── */
 
@@ -465,42 +524,54 @@ const routes: [HttpMethod, RegExp, Handler][] = [
     /^\/quizzes$/,
     (ctx) => {
       const user = requireTeacher(ctx);
-      const games = [...ctx.d.games.values()].filter((g) => g.status === 'ended');
-      const quizzes: QuizSummary[] = [...ctx.d.quizzes.values()]
-        .filter((q) => q.ownerId === user.id)
+      const quizzes = [...ctx.d.quizzes.values()]
+        .filter((q) => q.ownerId === user.id && !q.deletedAt)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        .map((q) => ({
-          id: q.id,
-          title: q.title,
-          description: q.description,
-          category: q.category,
-          imageUrl: q.imageUrl,
-          questionCount: q.questions.length,
-          gameCount: games.filter((g) => g.quizId === q.id).length,
-          createdAt: q.createdAt,
-          updatedAt: q.updatedAt,
-        }));
+        .map((q) => quizSummary(ctx.d, q));
       return { quizzes };
     },
   ],
-  ['POST', /^\/quizzes$/, (ctx) => ({ quiz: createQuiz(ctx.d, requireTeacher(ctx).id, embeddedQuizSchema.parse(ctx.body)) })],
+  [
+    'POST',
+    /^\/quizzes$/,
+    (ctx) => {
+      const quiz = createQuiz(ctx.d, requireTeacher(ctx).id, embeddedQuizSchema.parse(ctx.body));
+      saveVersion(ctx.d, quiz, 'save');
+      return { quiz };
+    },
+  ],
   ['POST', /^\/quizzes\/demo$/, (ctx) => ({ quiz: createQuiz(ctx.d, requireTeacher(ctx).id, DEMO_QUIZ) })],
+  [
+    'GET',
+    /^\/quizzes\/library$/,
+    (ctx) => {
+      const user = requireTeacher(ctx);
+      const quizzes = [...ctx.d.quizzes.values()]
+        .filter((q) => q.ownerId !== user.id && q.visibility === 'public' && q.status === 'published' && !q.deletedAt)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .map((q) => ({ ...quizSummary(ctx.d, q), ownerName: ctx.d.users.get(q.ownerId)?.displayName ?? '' }));
+      return { quizzes };
+    },
+  ],
+  ['GET', /^\/quizzes\/shared\/([^/]+)$/, (ctx) => (requireTeacher(ctx), { quiz: sharedQuiz(ctx.d, ctx.params[0]) })],
+  [
+    'POST',
+    /^\/quizzes\/shared\/([^/]+)\/copy$/,
+    (ctx) => {
+      const user = requireTeacher(ctx);
+      const source = sharedQuiz(ctx.d, ctx.params[0]);
+      const quiz = createQuiz(ctx.d, user.id, { ...toQuizInput(source), visibility: 'private', status: 'draft' });
+      saveVersion(ctx.d, quiz, 'save');
+      return { quiz };
+    },
+  ],
   ['GET', /^\/quizzes\/(\d+)$/, (ctx) => ({ quiz: ownedQuiz(ctx, ctx.params[0]) })],
   [
     'PUT',
     /^\/quizzes\/(\d+)$/,
     (ctx) => {
-      const quiz = ownedQuiz(ctx, ctx.params[0]);
-      const input = embeddedQuizSchema.parse(ctx.body);
-      Object.assign(quiz, {
-        title: input.title,
-        description: input.description,
-        imageUrl: input.imageUrl,
-        category: input.category,
-        questions: toQuestions(input),
-        updatedAt: nowIso(),
-      });
-      markDirty('quiz', quiz.id);
+      const quiz = updateQuiz(ctx.d, ownedQuiz(ctx, ctx.params[0]), embeddedQuizSchema.parse(ctx.body));
+      saveVersion(ctx.d, quiz, ctx.query.autosave === '1' ? 'autosave' : 'save');
       return { quiz };
     },
   ],
@@ -516,8 +587,10 @@ const routes: [HttpMethod, RegExp, Handler][] = [
     'POST',
     /^\/quizzes\/(\d+)\/duplicate$/,
     (ctx) => {
-      const copy = quizInput(ownedQuiz(ctx, ctx.params[0]));
-      return { quiz: createQuiz(ctx.d, ctx.user!.id, { ...copy, title: `${copy.title} (copie)`.slice(0, 120) }) };
+      const copy = toQuizInput(ownedQuiz(ctx, ctx.params[0]));
+      const quiz = createQuiz(ctx.d, ctx.user!.id, { ...copy, title: `${copy.title} (copie)`.slice(0, 120), visibility: 'private' });
+      saveVersion(ctx.d, quiz, 'save');
+      return { quiz };
     },
   ],
 
@@ -530,6 +603,8 @@ const routes: [HttpMethod, RegExp, Handler][] = [
       const input = createGameSchema.parse(ctx.body);
       const quiz = ownedQuiz(ctx, input.quizId);
       if (quiz.questions.length === 0) throw new ApiError(400, 'Ajoutez au moins une question avant de lancer une partie');
+      const problems = quizProblems(quiz);
+      if (problems.length > 0) throw new ApiError(400, `Corrigez le quiz avant de le lancer — ${problems[0]}`);
       const isTest = input.mode !== 'live';
       const room = await hub.createRoom({
         hostUserId: user.id,
@@ -568,24 +643,56 @@ const routes: [HttpMethod, RegExp, Handler][] = [
   ['GET', /^\/meta$/, () => ({ lanUrls: [] })],
 ];
 
+function localQuizGateway(d: LocalData): QuizGateway {
+  return {
+    getOwned: (ownerId, quizId) => {
+      const quiz = d.quizzes.get(quizId);
+      return quiz && quiz.ownerId === ownerId && !quiz.deletedAt ? quiz : undefined;
+    },
+    create: (ownerId, input) => createQuiz(d, ownerId, input),
+    listOwned: (ownerId) => [...d.quizzes.values()].filter((q) => q.ownerId === ownerId && !q.deletedAt),
+  };
+}
+
 export async function localApi<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
   try {
     const d = await loadData();
+    const [pathname, search = ''] = path.split('?');
+    const query = Object.fromEntries(new URLSearchParams(search));
+    const user = sessionUser(d);
+    const cloned = body === undefined ? undefined : structuredClone(body);
+    let result: unknown;
+    let found = false;
     for (const [routeMethod, pattern, handler] of routes) {
       if (routeMethod !== method) continue;
-      const match = pattern.exec(path);
+      const match = pattern.exec(pathname);
       if (!match) continue;
-      const result = await handler({ d, user: sessionUser(d), body: body === undefined ? undefined : structuredClone(body), params: match.slice(1) });
-      // Une modification est écrite avant de répondre : l'écran suivant (ou un rechargement) la retrouve.
-      if (method === 'GET') void flush();
-      else await flush();
-      return structuredClone(result) as T;
+      result = await handler({ d, user, body: cloned, params: match.slice(1), query });
+      found = true;
+      break;
     }
-    throw notFound();
+    if (!found) {
+      const shared = matchSharedRoute(method, pathname);
+      if (!shared) throw notFound();
+      result = await shared.route.handler({
+        user: user ? toPublicUser(user) : null,
+        body: cloned,
+        params: shared.params,
+        query,
+        docs: localDocStore(d),
+        quizzes: localQuizGateway(d),
+        now: () => new Date(),
+      });
+    }
+    // Une modification est écrite avant de répondre : l'écran suivant (ou un rechargement) la retrouve.
+    if (method === 'GET') void flush();
+    else await flush();
+    return structuredClone(result) as T;
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error instanceof ZodError) throw new ApiError(400, firstIssue(error));
     if (error instanceof GameError) throw new ApiError(409, error.message);
+    if (error instanceof ServiceError) throw new ApiError(error.status, error.message);
     console.error('[whatquiz] Erreur locale :', error);
     throw new ApiError(500, ERRORS.generic);
   }

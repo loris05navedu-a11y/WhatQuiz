@@ -77,12 +77,25 @@ export interface QuestionInput {
   config?: QuestionConfig;
 }
 
+export type QuizStatus = 'draft' | 'published';
+/** private : seul l'auteur ; code : quiconque connaît le code d'accès ; public : bibliothèque des professeurs. */
+export type QuizVisibility = 'private' | 'code' | 'public';
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
 export interface QuizInput {
   title: string;
   description: string;
   imageUrl: string | null;
   category: string;
   questions: QuestionInput[];
+  /** Brouillon : peut être incomplet, n'apparaît ni dans la bibliothèque ni dans les devoirs. */
+  status?: QuizStatus;
+  visibility?: QuizVisibility;
+  subcategory?: string;
+  tags?: string[];
+  difficulty?: Difficulty | null;
+  /** Niveau scolaire (ex. « 2nde »). */
+  level?: string;
 }
 
 export interface Question extends QuestionInput {
@@ -90,7 +103,18 @@ export interface Question extends QuestionInput {
   position: number;
 }
 
-export interface Quiz extends Omit<QuizInput, 'questions'> {
+export interface QuizMeta {
+  status: QuizStatus;
+  visibility: QuizVisibility;
+  /** Code d'accès (6 caractères sans ambiguïté), attribué quand le quiz est partagé. */
+  accessCode: string | null;
+  subcategory: string;
+  tags: string[];
+  difficulty: Difficulty | null;
+  level: string;
+}
+
+export interface Quiz extends Omit<QuizInput, 'questions' | keyof QuizMeta>, QuizMeta {
   id: number;
   ownerId: number;
   questions: Question[];
@@ -98,7 +122,7 @@ export interface Quiz extends Omit<QuizInput, 'questions'> {
   updatedAt: string;
 }
 
-export interface QuizSummary {
+export interface QuizSummary extends QuizMeta {
   id: number;
   title: string;
   description: string;
@@ -108,6 +132,16 @@ export interface QuizSummary {
   gameCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Version enregistrée d'un quiz (historique des modifications). */
+export interface QuizVersionSummary {
+  id: string;
+  quizId: number;
+  createdAt: string;
+  title: string;
+  questionCount: number;
+  reason: 'save' | 'autosave' | 'restore';
 }
 
 /* ───────────── Parties ───────────── */

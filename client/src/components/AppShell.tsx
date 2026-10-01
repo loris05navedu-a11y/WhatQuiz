@@ -38,6 +38,9 @@ export function AppShell() {
                 <NavLink to="/dashboard">
                   <Icon name="home" size={18} /> Tableau de bord
                 </NavLink>
+                <NavLink to="/library">
+                  <Icon name="book" size={18} /> Bibliothèque
+                </NavLink>
                 <NavLink to="/history">
                   <Icon name="history" size={18} /> Historique
                 </NavLink>
@@ -69,6 +72,9 @@ export function AppShell() {
                   <>
                     <Link role="menuitem" className="menu-item show-mobile" to="/dashboard" onClick={close}>
                       <Icon name="home" /> Tableau de bord
+                    </Link>
+                    <Link role="menuitem" className="menu-item show-mobile" to="/library" onClick={close}>
+                      <Icon name="book" /> Bibliothèque
                     </Link>
                     <Link role="menuitem" className="menu-item show-mobile" to="/history" onClick={close}>
                       <Icon name="history" /> Historique

@@ -139,4 +139,26 @@ export const MIGRATIONS: Migration[] = [
     ALTER TABLE answers ADD COLUMN match_text TEXT;
     `,
   },
+  // Métadonnées des quiz (brouillon/publié, visibilité, code d'accès, tags, niveau…), corbeille (deleted_at)
+  // et stockage de documents générique (versions, banque de questions, classes, devoirs, notifications…).
+  `
+  ALTER TABLE quizzes ADD COLUMN status TEXT NOT NULL DEFAULT 'published';
+  ALTER TABLE quizzes ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private';
+  ALTER TABLE quizzes ADD COLUMN access_code TEXT;
+  ALTER TABLE quizzes ADD COLUMN meta TEXT NOT NULL DEFAULT '{}';
+  ALTER TABLE quizzes ADD COLUMN deleted_at TEXT;
+  CREATE UNIQUE INDEX idx_quizzes_access_code ON quizzes(access_code) WHERE access_code IS NOT NULL;
+  CREATE INDEX idx_quizzes_public ON quizzes(visibility, status);
+
+  CREATE TABLE documents (
+    kind       TEXT NOT NULL,
+    id         TEXT NOT NULL,
+    owner_id   INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    data       TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (kind, id)
+  );
+  CREATE INDEX idx_documents_owner ON documents(kind, owner_id);
+  `,
 ];

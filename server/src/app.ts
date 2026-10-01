@@ -11,6 +11,7 @@ import { accountRoutes, authRoutes } from './routes/auth';
 import { gameRoutes } from './routes/games';
 import { metaRoutes } from './routes/meta';
 import { quizRoutes } from './routes/quizzes';
+import { sharedRoutes } from './routes/shared';
 import { uploadRoutes } from './routes/uploads';
 import { createServices, type Services } from './services';
 import { createRealtime } from './socket';
@@ -49,6 +50,7 @@ export function createApp(config: AppConfig): WhatQuizApp {
   api.use('/games', gameRoutes(services, manager));
   api.use('/uploads', uploadRoutes(services));
   api.use('/meta', metaRoutes(services));
+  api.use(sharedRoutes(services));
   api.use((_req, _res, next) => next(notFound()));
   api.use(errorHandler);
 

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { QUIZ_FILE_EXTENSION } from '../../../shared/quizFile';
-import type { DashboardStats, QuizSummary } from '../../../shared/types';
+import { DIFFICULTY_LABELS } from '../../../shared/constants';
+import { normalizeText } from '../../../shared/text';
+import type { DashboardStats, QuizStatus, QuizSummary, QuizVisibility } from '../../../shared/types';
 import { errorMessage } from '../api/client';
 import { gameApi, quizApi, type ActiveGame } from '../api/endpoints';
 import { Button, LinkButton, PageLoader } from '../components/Button';
@@ -17,6 +19,12 @@ import { useTestLauncher } from '../lib/useTestLauncher';
 import { MediaImg } from '../components/Media';
 
 type SortKey = 'updated' | 'title' | 'games';
+
+const VISIBILITY: Record<QuizVisibility, { icon: IconName; label: string }> = {
+  private: { icon: 'lock', label: 'Privé' },
+  code: { icon: 'key', label: 'Partagé avec un code' },
+  public: { icon: 'globe', label: 'Public' },
+};
 
 const PHASE_LABELS: Record<ActiveGame['phase'], string> = {
   lobby: 'Salle d’attente',
@@ -34,6 +42,7 @@ export function DashboardPage() {
   const [active, setActive] = useState<ActiveGame[]>([]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
+  const [status, setStatus] = useState<QuizStatus | ''>('');
   const [sort, setSort] = useState<SortKey>('updated');
   const [importing, setImporting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -57,16 +66,18 @@ export function DashboardPage() {
   const categories = useMemo(() => [...new Set((quizzes ?? []).map((q) => q.category).filter(Boolean))].sort(), [quizzes]);
 
   const visible = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase('fr');
+    // Recherche sans accents ni majuscules, dans le titre, la description, la sous-catégorie et les tags.
+    const term = normalizeText(search);
     const filtered = (quizzes ?? []).filter(
       (quiz) =>
         (!category || quiz.category === category) &&
-        (!term || quiz.title.toLocaleLowerCase('fr').includes(term) || quiz.description.toLocaleLowerCase('fr').includes(term)),
+        (!status || quiz.status === status) &&
+        (!term || normalizeText([quiz.title, quiz.description, quiz.subcategory, ...quiz.tags].join(' ')).includes(term)),
     );
     return filtered.sort((a, b) =>
       sort === 'title' ? a.title.localeCompare(b.title, 'fr') : sort === 'games' ? b.gameCount - a.gameCount : b.updatedAt.localeCompare(a.updatedAt),
     );
-  }, [quizzes, search, category, sort]);
+  }, [quizzes, search, category, status, sort]);
 
   if (!quizzes || !stats) return <PageLoader />;
 
@@ -108,6 +119,9 @@ export function DashboardPage() {
         <div className="row">
           <LinkButton to="/join" icon="play">
             Rejoindre une partie
+          </LinkButton>
+          <LinkButton to="/library" icon="book" title="Quiz partagés par d’autres professeurs">
+            Bibliothèque
           </LinkButton>
           <Button icon="fileUp" loading={importing} onClick={() => fileInput.current?.click()} title="Importer un quiz exporté depuis WhatQuiz">
             Importer
@@ -166,6 +180,11 @@ export function DashboardPage() {
                     {c}
                   </option>
                 ))}
+              </select>
+              <select className="select" aria-label="Filtrer par statut" value={status} onChange={(e) => setStatus(e.target.value as QuizStatus | '')}>
+                <option value="">Tous les statuts</option>
+                <option value="published">Publiés</option>
+                <option value="draft">Brouillons</option>
               </select>
               <select className="select" aria-label="Trier" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
                 <option value="updated">Modifiés récemment</option>
@@ -298,7 +317,15 @@ function QuizCard({ quiz, onChanged }: { quiz: QuizSummary; onChanged: () => voi
         {quiz.imageUrl ? <MediaImg url={quiz.imageUrl} loading="lazy" /> : <span aria-hidden="true">{quiz.title.charAt(0).toUpperCase()}</span>}
       </Link>
       <div className="quiz-card-body">
-        {quiz.category && <span className="badge badge-brand">{quiz.category}</span>}
+        <div className="quiz-card-badges">
+          {quiz.status === 'draft' && <span className="badge badge-warning">Brouillon</span>}
+          {quiz.category && <span className="badge badge-brand">{quiz.subcategory ? `${quiz.category} · ${quiz.subcategory}` : quiz.category}</span>}
+          {quiz.level && <span className="badge">{quiz.level}</span>}
+          {quiz.difficulty && <span className="badge">{DIFFICULTY_LABELS[quiz.difficulty]}</span>}
+          <span className="quiz-card-visibility" title={VISIBILITY[quiz.visibility].label}>
+            <Icon name={VISIBILITY[quiz.visibility].icon} size={16} aria-label={VISIBILITY[quiz.visibility].label} />
+          </span>
+        </div>
         <h3 className="quiz-card-title">{quiz.title}</h3>
         <p className="muted small">
           {plural(quiz.questionCount, 'question')} · {plural(quiz.gameCount, 'partie')} · modifié {formatRelative(quiz.updatedAt)}

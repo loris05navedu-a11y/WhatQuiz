@@ -1,0 +1,419 @@
+/* ───────────── Éditeur avancé : barre d'outils, glisser-déposer, aperçu en direct ───────────── */
+.editor-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.editor-topbar {
+  flex-wrap: wrap;
+}
+
+.editor-topbar-title b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-topbar-title .badge {
+  flex-shrink: 0;
+}
+
+.save-state::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  vertical-align: 1px;
+}
+
+.save-dirty::before,
+.save-saving::before {
+  background: var(--warning);
+}
+
+.save-invalid::before,
+.save-error::before {
+  background: var(--danger);
+}
+
+.save-error {
+  color: var(--danger);
+}
+
+.editor-backup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.editor-backup > span {
+  flex: 1;
+  min-width: 200px;
+}
+
+.rail-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.rail-search:focus-within {
+  border-color: var(--brand);
+}
+
+.rail-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.rail-grip {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 36px;
+  margin-left: -6px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+
+.rail-grip:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.rail-list > li {
+  position: relative;
+  transition: opacity 0.15s;
+}
+
+.rail-list > li.is-dragging {
+  opacity: 0.45;
+}
+
+.rail-list > li.drop-before::before,
+.rail-list > li.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--brand);
+}
+
+.rail-list > li.drop-before::before {
+  top: -5px;
+}
+
+.rail-list > li.drop-after::after {
+  bottom: -5px;
+}
+
+/* Aperçu en direct : troisième colonne, collée en haut pendant le défilement. */
+.with-live-preview .editor-body {
+  grid-template-columns: 260px minmax(0, 1fr) minmax(300px, 0.85fr);
+}
+
+.editor-live-preview {
+  position: sticky;
+  top: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100dvh - 170px);
+  overflow-y: auto;
+}
+
+.editor-live-preview .stage-inline {
+  padding: 16px;
+}
+
+.editor-live-preview .choices {
+  grid-template-columns: 1fr;
+}
+
+.editor-subheading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 1.05rem;
+  font-weight: 750;
+}
+
+.editor-subheading svg {
+  color: var(--brand);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.access-code {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--brand-soft);
+}
+
+.access-code b {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tags-input {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 48px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+}
+
+.tags-input:focus-within {
+  border-color: var(--brand);
+}
+
+.tags-input input {
+  flex: 1;
+  min-width: 160px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 6px 0;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 4px 4px 10px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 650;
+  font-size: 0.9rem;
+}
+
+.tag-chip button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tag-chip button:hover {
+  background: color-mix(in srgb, var(--brand) 18%, transparent);
+}
+
+.version-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.version-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+}
+
+.version-list li > div {
+  min-width: 0;
+}
+
+.version-list .badge {
+  margin-left: 8px;
+}
+
+@media (max-width: 1180px) {
+  /* Pas la place pour trois colonnes : l'aperçu passe sous la question. */
+  .with-live-preview .editor-body {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .with-live-preview .editor-live-preview {
+    grid-column: 2;
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 900px) {
+  /* En portrait, les outils passent sous le titre et les actions principales. */
+  .editor-tools {
+    order: 10;
+  }
+
+  .with-live-preview .editor-body {
+    grid-template-columns: 1fr;
+  }
+
+  .with-live-preview .editor-live-preview {
+    grid-column: auto;
+  }
+
+  .editor-rail .rail-search {
+    flex-shrink: 0;
+    width: 220px;
+  }
+
+  .rail-list > li.drop-before::before,
+  .rail-list > li.drop-after::after {
+    top: 6px;
+    bottom: 6px;
+    left: auto;
+    right: auto;
+    width: 3px;
+    height: auto;
+  }
+
+  .rail-list > li.drop-before::before {
+    left: -5px;
+  }
+
+  .rail-list > li.drop-after::after {
+    right: -5px;
+  }
+}
+
+/* ───────────── Cartes de quiz : statut, visibilité, classement ───────────── */
+.quiz-card-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.quiz-card-visibility {
+  margin-left: auto;
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+/* Filtres : la recherche occupe sa propre ligne, les listes se partagent la suivante. */
+.quiz-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.quiz-filters .input-with-icon {
+  flex: 1 1 100%;
+}
+
+.quiz-filters .select {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+/* ───────────── Bibliothèque ───────────── */
+.library-code {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.library-code > svg {
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+.library-code-label {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 180px;
+}
+
+.library-code-input {
+  width: 9.5em;
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.library-filters .input-with-icon {
+  flex: 1 1 260px;
+}
+
+.library-filters .select {
+  flex: 0 1 auto;
+}
+
+button.quiz-card-cover {
+  width: 100%;
+  border: 0;
+  cursor: pointer;
+}
+
+.library-tags {
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.library-questions {
+  margin: 0;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 45dvh;
+  overflow-y: auto;
+}
+
+.library-questions .badge {
+  margin-right: 4px;
+}

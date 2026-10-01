@@ -1,5 +1,6 @@
 import type { AppConfig } from './config';
 import { Database } from './db/database';
+import { SqlDocStore } from './db/documents';
 import { GameRepository } from './db/games';
 import { QuizRepository } from './db/quizzes';
 import { SessionRepository } from './db/sessions';
@@ -13,6 +14,7 @@ export interface Services {
   sessions: SessionRepository;
   quizzes: QuizRepository;
   games: GameRepository;
+  docs: SqlDocStore;
 }
 
 export function createServices(config: AppConfig): Services {
@@ -24,5 +26,6 @@ export function createServices(config: AppConfig): Services {
     sessions: new SessionRepository(db, config.sessionDays * 86_400_000),
     quizzes: new QuizRepository(db),
     games: new GameRepository(db),
+    docs: new SqlDocStore(db),
   };
 }

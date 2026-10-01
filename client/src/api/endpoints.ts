@@ -8,6 +8,7 @@ import type {
   Quiz,
   QuizInput,
   QuizSummary,
+  QuizVersionSummary,
   Role,
   StudentHistoryEntry,
 } from '../../../shared/types';
@@ -66,7 +67,13 @@ export const quizApi = {
   list: () => api<{ quizzes: QuizSummary[] }>('GET', '/quizzes'),
   get: (id: number) => api<{ quiz: Quiz }>('GET', `/quizzes/${id}`),
   create: (input: QuizInput) => api<{ quiz: Quiz }>('POST', '/quizzes', input),
-  update: (id: number, input: QuizInput) => api<{ quiz: Quiz }>('PUT', `/quizzes/${id}`, input),
+  update: (id: number, input: QuizInput, options: { autosave?: boolean } = {}) =>
+    api<{ quiz: Quiz }>('PUT', `/quizzes/${id}${options.autosave ? '?autosave=1' : ''}`, input),
+  library: () => api<{ quizzes: (QuizSummary & { ownerName: string })[] }>('GET', '/quizzes/library'),
+  shared: (code: string) => api<{ quiz: Quiz }>('GET', `/quizzes/shared/${encodeURIComponent(code)}`),
+  copyShared: (code: string) => api<{ quiz: Quiz }>('POST', `/quizzes/shared/${encodeURIComponent(code)}/copy`),
+  versions: (id: number) => api<{ versions: QuizVersionSummary[] }>('GET', `/quizzes/${id}/versions`),
+  version: (id: number, versionId: string) => api<{ quiz: QuizInput }>('GET', `/quizzes/${id}/versions/${versionId}`),
   remove: (id: number) => api<{ ok: true }>('DELETE', `/quizzes/${id}`),
   duplicate: (id: number) => api<{ quiz: Quiz }>('POST', `/quizzes/${id}/duplicate`),
   addDemo: () => api<{ quiz: Quiz }>('POST', '/quizzes/demo'),

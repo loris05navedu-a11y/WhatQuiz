@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler } from 'express';
 import { ZodError } from 'zod';
 import { ERRORS } from '../../../shared/constants';
+import { ServiceError } from '../../../shared/documents';
 import { GameError } from '../game/errors';
 import { firstIssue } from '../validation';
 
@@ -18,7 +19,7 @@ export const forbidden = () => new HttpError(403, ERRORS.forbidden);
 
 /** Toutes les erreurs deviennent un message JSON lisible ; les détails techniques restent dans les logs. */
 export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
-  if (error instanceof HttpError) return void res.status(error.status).json({ error: error.message });
+  if (error instanceof HttpError || error instanceof ServiceError) return void res.status(error.status).json({ error: error.message });
   if (error instanceof ZodError) return void res.status(400).json({ error: firstIssue(error) });
   if (error instanceof GameError) return void res.status(409).json({ error: error.message });
   const status = (error as { status?: number }).status;

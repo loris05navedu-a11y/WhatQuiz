@@ -22,11 +22,13 @@ interface QuestionEditorProps {
   onChange: (question: DraftQuestion) => void;
   onMove: (delta: -1 | 1) => void;
   onDuplicate: () => void;
+  /** Copie la question dans le presse-papiers de l'éditeur (collable dans un autre quiz). */
+  onCopy?: () => void;
   onDelete: () => void;
   onPreview: () => void;
 }
 
-export function QuestionEditor({ question, index, total, onChange, onMove, onDuplicate, onDelete, onPreview }: QuestionEditorProps) {
+export function QuestionEditor({ question, index, total, onChange, onMove, onDuplicate, onCopy, onDelete, onPreview }: QuestionEditorProps) {
   const problem = questionProblem(question);
   const update = (patch: Partial<DraftQuestion>) => onChange({ ...question, ...patch });
 
@@ -38,6 +40,7 @@ export function QuestionEditor({ question, index, total, onChange, onMove, onDup
         <Button size="sm" variant="ghost" icon="chevronUp" aria-label="Monter la question" disabled={index === 0} onClick={() => onMove(-1)} />
         <Button size="sm" variant="ghost" icon="chevronDown" aria-label="Descendre la question" disabled={index === total - 1} onClick={() => onMove(1)} />
         <Button size="sm" variant="ghost" icon="copy" aria-label="Dupliquer la question" title="Dupliquer" onClick={onDuplicate} />
+        {onCopy && <Button size="sm" variant="ghost" icon="clipboard" aria-label="Copier la question" title="Copier (Ctrl+C)" onClick={onCopy} />}
         <Button size="sm" variant="ghost" icon="trash" aria-label="Supprimer la question" title="Supprimer" onClick={onDelete} />
         <Button size="sm" variant="soft" icon="eye" onClick={onPreview}>
           Aperçu
