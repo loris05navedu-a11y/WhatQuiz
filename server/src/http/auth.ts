@@ -99,5 +99,7 @@ export const requireJsonForMutations: RequestHandler = (req, _res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   const hasBody = Number(req.headers['content-length'] ?? 0) > 0 || req.headers['transfer-encoding'] !== undefined;
   if (!hasBody || req.is('application/json')) return next();
+  // Envoi de fichier : ces types déclenchent eux aussi une pré-vérification CORS (impossibles depuis un formulaire).
+  if (req.path === '/uploads/file' && req.is(['image/*', 'audio/*', 'video/*', 'application/octet-stream'])) return next();
   next(new HttpError(415, 'Format de requête non supporté'));
 };

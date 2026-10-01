@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
+import { MEDIA_RULES } from '../../../shared/media';
 import { errorMessage } from '../api/client';
-import { uploadApi } from '../api/endpoints';
 import { Button } from '../components/Button';
+import { MediaImg } from '../components/Media';
 import { useToast } from '../context/ToastContext';
-import { resizeImage } from '../lib/image';
-import { assetUrl } from '../lib/backend';
+import { MediaError, uploadMedia } from '../lib/media';
 
 interface ImagePickerProps {
   value: string | null;
@@ -12,7 +12,7 @@ interface ImagePickerProps {
   label: string;
 }
 
-/** Choix d'une image depuis la galerie ou l'appareil photo de la tablette. */
+/** Choix d'une image (ou d'un GIF) depuis la galerie ou l'appareil photo de la tablette. */
 export function ImagePicker({ value, onChange, label }: ImagePickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
@@ -22,10 +22,9 @@ export function ImagePicker({ value, onChange, label }: ImagePickerProps) {
     if (!file) return;
     setUploading(true);
     try {
-      const { url } = await uploadApi.image(await resizeImage(file));
-      onChange(url);
+      onChange((await uploadMedia(file, 'image')).url);
     } catch (error) {
-      toast.error(error instanceof Error && !('status' in error) ? error.message : errorMessage(error));
+      toast.error(error instanceof MediaError ? error.message : errorMessage(error));
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -34,10 +33,10 @@ export function ImagePicker({ value, onChange, label }: ImagePickerProps) {
 
   return (
     <div className="image-picker">
-      <input ref={inputRef} type="file" accept="image/*" hidden onChange={(e) => pick(e.target.files?.[0])} aria-label={label} />
+      <input ref={inputRef} type="file" accept={MEDIA_RULES.image.accept} hidden onChange={(e) => pick(e.target.files?.[0])} aria-label={label} />
       {value ? (
         <div className="image-picker-preview">
-          <img src={assetUrl(value)} alt="" />
+          <MediaImg url={value} />
           <div className="row">
             <Button size="sm" icon="refresh" onClick={() => inputRef.current?.click()} loading={uploading}>
               Remplacer

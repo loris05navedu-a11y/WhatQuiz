@@ -7,6 +7,9 @@ export function securityHeaders(strictCsp: boolean): RequestHandler {
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
+    // Sons et vidéos des questions : fichiers envoyés, liens web ; vidéos YouTube intégrées (sans cookies).
+    "media-src 'self' data: blob: https:",
+    'frame-src https://www.youtube-nocookie.com',
     "connect-src 'self' ws: wss:",
     "font-src 'self'",
     "manifest-src 'self'",

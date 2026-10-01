@@ -16,6 +16,9 @@ Object.defineProperty(globalThis, 'localStorage', {
 
 const { localApi, recordPlayedGame } = await import('../../client/src/standalone/api');
 const { hub, DoorTakenError } = await import('../../client/src/standalone/hub');
+const { putAsset, getAsset } = await import('../../client/src/standalone/assets');
+const SOUND = new Blob([new Uint8Array([0x49, 0x44, 0x33, 3, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6])], { type: 'audio/mpeg' });
+let soundUrl = '';
 
 const IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
@@ -99,12 +102,16 @@ describe('mode sans serveur (GitHub Pages)', () => {
     );
   });
 
-  it('garde les images dans le quiz (pas de serveur de fichiers)', async () => {
-    assert.equal(quizSchema.safeParse(QUIZ).success, false, 'le serveur refuse toujours les images intégrées');
-    ({ quiz } = await localApi<{ quiz: Quiz }>('POST', '/quizzes', QUIZ));
+  it('garde les médias dans le navigateur (pas de serveur de fichiers)', async () => {
+    const id = await putAsset(SOUND, 'audio/mpeg');
+    assert.equal(await putAsset(SOUND, 'audio/mpeg'), id, 'le même fichier n’est stocké qu’une fois');
+    assert.equal((await getAsset(id))?.type, 'audio/mpeg');
+    soundUrl = `asset:${id}`;
+    const withSound = { ...QUIZ, questions: [{ ...QUIZ.questions[0], media: [{ kind: 'audio' as const, url: soundUrl }] }] };
+    assert.equal(quizSchema.safeParse(withSound).success, false, 'le serveur refuse toujours les fichiers du navigateur');
+    ({ quiz } = await localApi<{ quiz: Quiz }>('POST', '/quizzes', withSound));
     assert.equal(quiz.questions[0].imageUrl, IMAGE);
-    const { url } = await localApi<{ url: string }>('POST', '/uploads', { dataUrl: IMAGE });
-    assert.equal(url, IMAGE);
+    assert.deepEqual(quiz.questions[0].media, [{ kind: 'audio', url: soundUrl }]);
     await localApi('POST', `/quizzes/${quiz.id}/duplicate`);
     const { quizzes } = await localApi<{ quizzes: { title: string }[] }>('GET', '/quizzes');
     assert.deepEqual(quizzes.map((q) => q.title).sort(), ['Quiz hors ligne', 'Quiz hors ligne (copie)']);
@@ -123,8 +130,13 @@ describe('mode sans serveur (GitHub Pages)', () => {
     const student = hub.connect(null, playerBox.deliver);
     assert.equal(send(student, 'host:join', { code }).ok, false, 'un élève distant ne peut pas piloter la partie');
     assert.deepEqual(send(student, 'game:check', { code }), { ok: true, code, quizTitle: 'Quiz hors ligne' });
+    const requestAsset = (id: string) => new Promise<AckResult<{ data?: string }>>((resolve) => hub.handle(student, 'asset:get', { id }, (r) => resolve(r as AckResult<{ data?: string }>)));
+    assert.equal((await requestAsset(soundUrl.slice(6))).ok, false, 'un inconnu (hors partie) ne reçoit pas les fichiers');
     const joined = send<{ playerId: string; token: string }>(student, 'game:join', { code, nickname: 'Léo' });
     assert.ok(joined.ok);
+    const sound = await requestAsset(soundUrl.slice(6));
+    assert.ok(sound.ok && sound.data?.startsWith('data:audio/mpeg;base64,'), 'le joueur reçoit le son de la question');
+    assert.equal((await requestAsset('0123456789abcdef0123456789abcdef')).ok, false, 'seuls les fichiers du quiz sont transmis');
     assert.equal(send(student, 'host:action', { type: 'start' }).ok, false);
 
     send(host, 'host:action', { type: 'start' });

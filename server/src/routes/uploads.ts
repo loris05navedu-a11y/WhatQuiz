@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { Router } from 'express';
+import express, { Router } from 'express';
+import { detectMedia, MEDIA_RULES, mediaProblem } from '../../../shared/media';
 import { requireTeacher } from '../http/auth';
 import { HttpError } from '../http/errors';
 import type { Services } from '../services';
@@ -33,6 +34,21 @@ export function uploadRoutes(services: Services): Router {
     const fileName = `${randomUUID()}.${extension}`;
     writeFileSync(path.join(services.config.uploadDir, fileName), buffer);
     res.status(201).json({ url: `/uploads/${fileName}` });
+  });
+
+  /**
+   * Envoi direct d'un fichier (image, GIF, son, vidéo), sans conversion en base64. Le format est reconnu
+   * d'après le contenu réel du fichier, jamais d'après le type annoncé ; chaque type a sa taille maximale.
+   */
+  const maxBytes = Math.max(...Object.values(MEDIA_RULES).map((rule) => rule.maxBytes));
+  router.post('/file', requireTeacher, express.raw({ type: ['image/*', 'audio/*', 'video/*', 'application/octet-stream'], limit: maxBytes }), (req, res) => {
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const detected = detectMedia(new Uint8Array(buffer.subarray(0, 32)));
+    const problem = mediaProblem(detected, buffer.length, false);
+    if (problem || !detected) throw new HttpError(buffer.length > maxBytes ? 413 : 400, problem ?? 'Fichier invalide');
+    const fileName = `${randomUUID()}.${detected.extension}`;
+    writeFileSync(path.join(services.config.uploadDir, fileName), buffer);
+    res.status(201).json({ url: `/uploads/${fileName}`, kind: detected.kind, size: buffer.length });
   });
 
   return router;

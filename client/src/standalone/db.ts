@@ -82,6 +82,7 @@ export interface LocalData {
 
 const DB_NAME = 'whatquiz';
 const STORE = 'records';
+export const ASSET_STORE = 'assets';
 const REVISION_KEY = 'wq:local-rev';
 const SESSION_KEY = 'wq:local-session';
 const SAVE_DELAY_MS = 250;
@@ -98,8 +99,13 @@ function openIdb(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
   return new Promise((resolve) => {
     try {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+      const request = indexedDB.open(DB_NAME, 2);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+        // Version 2 : fichiers des questions (images, sons, vidéos), stockés à part des enregistrements.
+        if (!db.objectStoreNames.contains(ASSET_STORE)) db.createObjectStore(ASSET_STORE);
+      };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => resolve(null);
     } catch {
@@ -109,7 +115,7 @@ function openIdb(): Promise<IDBDatabase | null> {
 }
 
 let idb: Promise<IDBDatabase | null> | null = null;
-const database = () => (idb ??= openIdb());
+export const database = () => (idb ??= openIdb());
 
 async function readAll(): Promise<LocalData> {
   const fresh: LocalData = { users: new Map(), quizzes: new Map(), games: new Map(), history: new Map() };

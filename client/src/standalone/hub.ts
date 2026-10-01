@@ -172,6 +172,10 @@ export class Hub {
 
   handle(client: HubClient, event: string, payload: unknown, ack?: Ack): void {
     const reply = ack ?? (() => {});
+    if (event === 'asset:get') {
+      void this.sendAsset(client, payload).then(reply, (error: unknown) => reply(toAckError(error)));
+      return;
+    }
     try {
       const result = this.dispatch(client, event, payload);
       if (result) reply(result);
@@ -242,6 +246,17 @@ export class Hub {
       default:
         return null;
     }
+  }
+
+  /** Fichier d'une question (image, son, vidéo), demandé par un joueur de la partie qui l'utilise. */
+  private async sendAsset(client: HubClient, payload: unknown): Promise<AckResult<Record<string, unknown>>> {
+    const id = (payload as { id?: unknown } | null)?.id;
+    const room = this.playerRoom(client) ?? (client.hostCode ? this.rooms.get(client.hostCode) : undefined);
+    if (typeof id !== 'string' || !/^[a-f0-9]{16,64}$/.test(id) || !room?.usesMedia(`asset:${id}`)) throw new GameError(ERRORS.forbidden);
+    const { blobToDataUrl, getAsset } = await import('./assets');
+    const asset = await getAsset(id);
+    if (!asset) throw new GameError(ERRORS.notFound);
+    return { ok: true, data: await blobToDataUrl(asset.blob) };
   }
 
   private playerRoom(client: HubClient): GameRoom | undefined {

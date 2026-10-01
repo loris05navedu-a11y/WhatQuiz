@@ -14,7 +14,7 @@ import { useToast } from '../context/ToastContext';
 import { formatDateTime, formatNumber, formatPercent, formatRelative, plural } from '../lib/format';
 import { exportQuiz, importQuizFile } from '../lib/quizTransfer';
 import { useTestLauncher } from '../lib/useTestLauncher';
-import { assetUrl } from '../lib/backend';
+import { MediaImg } from '../components/Media';
 
 type SortKey = 'updated' | 'title' | 'games';
 
@@ -88,7 +88,7 @@ export function DashboardPage() {
     try {
       const { quiz, lostImages } = await importQuizFile(file);
       toast.success(`« ${quiz.title} » importé`);
-      if (lostImages > 0) toast.error(lostImages === 1 ? '1 image n’a pas pu être importée' : `${lostImages} images n’ont pas pu être importées`);
+      if (lostImages > 0) toast.error(lostImages === 1 ? '1 média n’a pas pu être importé' : `${lostImages} médias n’ont pas pu être importés`);
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Import impossible');
@@ -295,7 +295,7 @@ function QuizCard({ quiz, onChanged }: { quiz: QuizSummary; onChanged: () => voi
   return (
     <article className="card quiz-card">
       <Link to={`/quizzes/${quiz.id}/edit`} className="quiz-card-cover" aria-label={`Modifier ${quiz.title}`}>
-        {quiz.imageUrl ? <img src={assetUrl(quiz.imageUrl)} alt="" loading="lazy" /> : <span aria-hidden="true">{quiz.title.charAt(0).toUpperCase()}</span>}
+        {quiz.imageUrl ? <MediaImg url={quiz.imageUrl} loading="lazy" /> : <span aria-hidden="true">{quiz.title.charAt(0).toUpperCase()}</span>}
       </Link>
       <div className="quiz-card-body">
         {quiz.category && <span className="badge badge-brand">{quiz.category}</span>}

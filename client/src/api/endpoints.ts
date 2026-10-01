@@ -82,10 +82,6 @@ export const gameApi = {
   checkCode: (code: string) => api<{ code: string; quizTitle: string }>('GET', `/games/code/${code}`),
 };
 
-export const uploadApi = {
-  image: (dataUrl: string) => api<{ url: string }>('POST', '/uploads', { dataUrl }),
-};
-
 export const metaApi = {
   get: () => api<{ lanUrls: string[] }>('GET', '/meta'),
 };

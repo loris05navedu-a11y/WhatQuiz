@@ -141,6 +141,11 @@ export class GameRoom {
     return this.snapshot.quizId;
   }
 
+  /** Le média fait partie de ce quiz (seuls ceux-là peuvent être transmis aux joueurs). */
+  usesMedia(url: string): boolean {
+    return this.snapshot.questions.some((q) => q.imageUrl === url || (q.media ?? []).some((m) => m.url === url));
+  }
+
   get quizTitle(): string {
     return this.snapshot.title;
   }

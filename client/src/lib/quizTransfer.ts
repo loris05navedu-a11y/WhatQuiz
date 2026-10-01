@@ -1,15 +1,15 @@
 import { parseQuizFile, QUIZ_FILE_EXTENSION, QuizFileError, toQuizFile } from '../../../shared/quizFile';
-import type { Quiz, QuizInput } from '../../../shared/types';
+import type { MediaItem, Quiz, QuizInput } from '../../../shared/types';
 import { errorMessage } from '../api/client';
-import { quizApi, uploadApi } from '../api/endpoints';
+import { quizApi } from '../api/endpoints';
 import { safeFileName, saveTextFile } from './download';
-import { assetUrl } from './backend';
 import { blobToDataUrl } from './image';
+import { mediaBlob, uploadMedia } from './media';
 
-const MAX_FILE_BYTES = 40 * 1024 * 1024;
+const MAX_FILE_BYTES = 80 * 1024 * 1024;
 
-/** Réécrit toutes les images d'un quiz (couverture + questions), une seule fois par URL. */
-async function mapImages(quiz: QuizInput, convert: (url: string) => Promise<string | null>): Promise<QuizInput> {
+/** Réécrit tous les médias d'un quiz (couverture, images, sons, vidéos), une seule fois par URL. null = retiré. */
+async function mapMedia(quiz: QuizInput, convert: (url: string) => Promise<string | null>): Promise<QuizInput> {
   const cache = new Map<string, string | null>();
   const map = async (url: string | null) => {
     if (!url) return null;
@@ -17,36 +17,41 @@ async function mapImages(quiz: QuizInput, convert: (url: string) => Promise<stri
     return cache.get(url)!;
   };
   const questions = [];
-  for (const question of quiz.questions) questions.push({ ...question, imageUrl: await map(question.imageUrl) });
+  for (const question of quiz.questions) {
+    const media: MediaItem[] = [];
+    for (const item of question.media ?? []) {
+      const url = await map(item.url);
+      if (url) media.push({ kind: item.kind, url });
+    }
+    questions.push({ ...question, imageUrl: await map(question.imageUrl), media });
+  }
   return { ...quiz, imageUrl: await map(quiz.imageUrl), questions };
 }
 
+/** Export : les fichiers (serveur ou navigateur) sont intégrés au fichier pour rester portables. */
 export async function exportQuiz(id: number): Promise<void> {
   const { quiz } = await quizApi.get(id);
-  const portable = await mapImages(quiz, async (url) => {
-    if (!url.startsWith('/uploads/')) return url;
-    try {
-      const response = await fetch(assetUrl(url));
-      return response.ok ? await blobToDataUrl(await response.blob()) : null;
-    } catch {
-      return null;
-    }
+  const portable = await mapMedia(quiz, async (url) => {
+    if (/^(https:|data:)/.test(url)) return url;
+    const blob = await mediaBlob(url);
+    return blob ? blobToDataUrl(blob) : null;
   });
   saveTextFile(JSON.stringify(toQuizFile(portable)), `${safeFileName(quiz.title)}${QUIZ_FILE_EXTENSION}`, 'application/json');
 }
 
 export class ImportError extends Error {}
 
-/** Crée un nouveau quiz à partir d'un fichier exporté ; les images intégrées sont renvoyées au serveur. */
+/** Crée un nouveau quiz à partir d'un fichier exporté ; les médias intégrés sont renvoyés au serveur (ou rangés dans le navigateur). */
 export async function importQuizFile(file: File): Promise<{ quiz: Quiz; lostImages: number }> {
   if (file.size > MAX_FILE_BYTES) throw new ImportError('Fichier trop volumineux');
   let lostImages = 0;
   try {
     const parsed = parseQuizFile(await file.text());
-    const input = await mapImages(parsed, async (url) => {
+    const input = await mapMedia(parsed, async (url) => {
       if (!url.startsWith('data:')) return url;
       try {
-        return (await uploadApi.image(url)).url;
+        const blob = await (await fetch(url)).blob();
+        return (await uploadMedia(blob)).url;
       } catch {
         lostImages += 1;
         return null;

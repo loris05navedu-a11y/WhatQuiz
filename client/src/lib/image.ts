@@ -19,6 +19,20 @@ export async function resizeImage(file: File): Promise<string> {
   return canvas.toDataURL(type, QUALITY);
 }
 
+/** Même redimensionnement, résultat binaire (envoi de fichier). Les GIF ne sont pas touchés (animation). */
+export async function resizeImageBlob(file: Blob): Promise<Blob> {
+  if (file.type === 'image/gif') return file;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Image illisible'))), type, QUALITY));
+}
+
 export function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

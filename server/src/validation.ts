@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CATEGORIES, LIMITS, QUESTION_TYPES, TIME_LIMITS } from '../../shared/constants';
+import { isValidMediaUrl, LOCAL_ASSET, MAX_MEDIA_PER_QUESTION } from '../../shared/media';
 import { normalizeQuestion } from '../../shared/questionTypes';
 import { questionProblem } from '../../shared/quizRules';
 
@@ -19,7 +20,7 @@ const imageUrlSchema = (allowEmbedded: boolean) =>
       (value) =>
         /^\/uploads\/[\w.-]+$/.test(value) ||
         (/^https?:\/\/\S+$/.test(value) && value.length <= 500) ||
-        (allowEmbedded && EMBEDDED_IMAGE.test(value)),
+        (allowEmbedded && (EMBEDDED_IMAGE.test(value) || LOCAL_ASSET.test(value))),
       'Image invalide',
     )
     .nullable()
@@ -67,8 +68,16 @@ const configSchema = z
   })
   .optional();
 
+const mediaSchema = (allowLocal: boolean) =>
+  z
+    .array(z.object({ kind: z.enum(['image', 'audio', 'video']), url: z.string().trim().max(allowLocal ? 3_000_000 : 500) }))
+    .max(MAX_MEDIA_PER_QUESTION, `${MAX_MEDIA_PER_QUESTION} médias maximum par question`)
+    .refine((items) => items.every((item) => isValidMediaUrl(item, allowLocal)), 'Média invalide')
+    .default([]);
+
 const buildQuizSchema = (allowEmbedded: boolean) => {
   const imageUrl = imageUrlSchema(allowEmbedded);
+  const media = mediaSchema(allowEmbedded);
   const questionSchema = z
     .object({
       type: z.enum(QUESTION_TYPES),
@@ -80,6 +89,7 @@ const buildQuizSchema = (allowEmbedded: boolean) => {
       answers: z.array(answerSchema).max(LIMITS.maxAcceptedAnswers),
       explanation: trimmed(LIMITS.explanation).default(''),
       bonus: z.boolean().default(false),
+      media,
       config: configSchema,
     })
     .transform((question) => normalizeQuestion(question))

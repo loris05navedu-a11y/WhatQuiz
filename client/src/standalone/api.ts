@@ -11,7 +11,6 @@ import {
   passwordChangeSchema,
   profileSchema,
   registerSchema,
-  uploadSchema,
 } from '../../../server/src/validation';
 import { ERRORS } from '../../../shared/constants';
 import { randomToken } from '../../../shared/random';
@@ -50,8 +49,6 @@ import { hub } from './hub';
  */
 
 const DEMO_ACCOUNT_TTL_MS = 24 * 3_600_000;
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
-const EMBEDDED_IMAGE = /^data:image\/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/=]+)$/;
 
 interface Context {
   d: LocalData;
@@ -568,18 +565,6 @@ const routes: [HttpMethod, RegExp, Handler][] = [
     },
   ],
 
-  [
-    'POST',
-    /^\/uploads$/,
-    (ctx) => {
-      requireTeacher(ctx);
-      const { dataUrl } = uploadSchema.parse(ctx.body);
-      const match = EMBEDDED_IMAGE.exec(dataUrl);
-      if (!match) throw new ApiError(400, 'Format d’image non supporté (PNG, JPEG, GIF ou WebP)');
-      if ((match[2].length * 3) / 4 > MAX_IMAGE_BYTES) throw new ApiError(413, 'Image trop lourde (2 Mo maximum)');
-      return { url: dataUrl };
-    },
-  ],
   ['GET', /^\/meta$/, () => ({ lanUrls: [] })],
 ];
 

@@ -9,6 +9,7 @@ import { AnswersEditor } from '../questionTypes/editors';
 import { TYPE_ICONS } from '../questionTypes/meta';
 import { convertQuestion, type DraftQuestion } from './draft';
 import { ImagePicker } from './ImagePicker';
+import { MediaManager } from './MediaManager';
 
 export { TYPE_ICONS };
 
@@ -76,6 +77,7 @@ export function QuestionEditor({ question, index, total, onChange, onMove, onDup
       />
 
       <ImagePicker label="Ajouter une image" value={question.imageUrl} onChange={(imageUrl) => update({ imageUrl })} />
+      <MediaManager media={question.media ?? []} onChange={(media) => update({ media })} />
 
       <AnswersEditor question={question} onChange={update} />
 

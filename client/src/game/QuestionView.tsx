@@ -1,7 +1,7 @@
 import { QUESTION_TYPE_LABELS } from '../../../shared/constants';
 import type { MediaItem, PublicQuestion } from '../../../shared/types';
 import { Icon } from '../components/Icon';
-import { assetUrl } from '../lib/backend';
+import { MediaAudio, MediaImg, MediaVideo } from '../components/Media';
 
 export function QuestionMeta({ question }: { question: Pick<PublicQuestion, 'index' | 'total' | 'type' | 'points' | 'pointsEnabled'> & { bonus?: boolean } }) {
   return (
@@ -33,23 +33,23 @@ export function QuestionStatement({ text, imageUrl, media = [], large }: Questio
   return (
     <div className={`question-statement${large ? ' large' : ''}`}>
       <h2 className="question-text">{text}</h2>
-      {images.length === 1 && <img className="question-image" src={assetUrl(images[0])} alt="" loading="lazy" />}
+      {images.length === 1 && <MediaImg className="question-image" url={images[0]} />}
       {images.length > 1 && (
         <div className={`question-gallery gallery-${Math.min(images.length, 4)}`}>
           {images.map((url, i) => (
-            <img key={i} src={assetUrl(url)} alt={`Image ${i + 1}`} loading="lazy" />
+            <MediaImg key={i} url={url} alt={`Image ${i + 1}`} />
           ))}
         </div>
       )}
       {media
         .filter((m) => m.kind === 'video')
         .map((m, i) => (
-          <video key={`v${i}`} className="question-video" src={assetUrl(m.url)} controls playsInline preload="metadata" />
+          <MediaVideo key={`v${i}`} className="question-video" url={m.url} />
         ))}
       {media
         .filter((m) => m.kind === 'audio')
         .map((m, i) => (
-          <audio key={`a${i}`} className="question-audio" src={assetUrl(m.url)} controls preload="metadata" />
+          <MediaAudio key={`a${i}`} className="question-audio" url={m.url} />
         ))}
     </div>
   );

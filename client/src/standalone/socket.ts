@@ -1,6 +1,8 @@
 import type { AckResult, PlayerView } from '../../../shared/types';
 
 type Listener = (...args: unknown[]) => void;
+
+const ASSET_TIMEOUT_MS = 60_000;
 type Ack = (result: AckResult<object>) => void;
 
 interface Link {
@@ -18,6 +20,7 @@ export class StandaloneSocket {
   private readonly listeners = new Map<string, Set<Listener>>();
   private link: Link | null = null;
   private closed = false;
+  private releaseAssets: (() => void) | null = null;
 
   constructor(private readonly code: string) {
     void this.open();
@@ -43,6 +46,7 @@ export class StandaloneSocket {
 
   disconnect(): this {
     this.closed = true;
+    this.releaseAssets?.();
     this.link?.close();
     this.link = null;
     return this;
@@ -68,9 +72,9 @@ export class StandaloneSocket {
       queueMicrotask(() => this.fire('connect'));
       return;
     }
-    const [{ PeerLink }, { recordPlayedGame }] = await Promise.all([import('./peer'), import('./api')]);
+    const [{ PeerLink }, { recordPlayedGame }, { setRemoteAssetFetcher }] = await Promise.all([import('./peer'), import('./api'), import('../lib/media')]);
     if (this.closed) return;
-    this.link = new PeerLink(this.code, {
+    const link = new PeerLink(this.code, {
       onOpen: () => this.fire('connect'),
       onClose: () => this.fire('disconnect'),
       onEvent: (event, payload) => {
@@ -78,5 +82,21 @@ export class StandaloneSocket {
         if (event === 'game:state') void recordPlayedGame(payload as PlayerView);
       },
     });
+    this.link = link;
+    // Les fichiers des questions (images, sons, vidéos) sont demandés au professeur, une seule fois chacun.
+    const fetchAsset = (id: string) =>
+      new Promise<Blob | null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), ASSET_TIMEOUT_MS);
+        link.send('asset:get', { id }, (result) => {
+          clearTimeout(timer);
+          const data = result.ok ? (result as { data?: unknown }).data : null;
+          if (typeof data !== 'string') return resolve(null);
+          fetch(data)
+            .then((response) => response.blob())
+            .then(resolve, () => resolve(null));
+        });
+      });
+    setRemoteAssetFetcher(fetchAsset);
+    this.releaseAssets = () => setRemoteAssetFetcher(null);
   }
 }
