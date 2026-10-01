@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
-import { MIGRATIONS } from './schema';
+import { MIGRATIONS, type Migration } from './schema';
 
 export type SqlParam = SQLInputValue;
 
@@ -50,11 +50,25 @@ export class Database {
     this.raw.exec('CREATE TABLE IF NOT EXISTS migrations (version INTEGER PRIMARY KEY)');
     const row = this.get<{ version: number | null }>('SELECT MAX(version) AS version FROM migrations');
     const current = row?.version ?? 0;
-    MIGRATIONS.slice(current).forEach((sql, offset) => {
+    MIGRATIONS.slice(current).forEach((migration, offset) => this.apply(migration, current + offset + 1));
+  }
+
+  /**
+   * Une migration qui reconstruit une table (pour changer une contrainte CHECK, impossible avec ALTER TABLE)
+   * désactive les clés étrangères, sinon supprimer l'ancienne table effacerait les lignes liées en cascade.
+   * Procédure recommandée par SQLite : https://www.sqlite.org/lang_altertable.html#otheralter
+   */
+  private apply(migration: Migration, version: number): void {
+    const { sql, rebuildsTables } = typeof migration === 'string' ? { sql: migration, rebuildsTables: false } : migration;
+    if (rebuildsTables) this.raw.exec('PRAGMA foreign_keys = OFF;');
+    try {
       this.transaction(() => {
         this.raw.exec(sql);
-        this.run('INSERT INTO migrations (version) VALUES (?)', current + offset + 1);
+        if (rebuildsTables && this.all('PRAGMA foreign_key_check').length > 0) throw new Error(`Migration ${version} : clés étrangères invalides`);
+        this.run('INSERT INTO migrations (version) VALUES (?)', version);
       });
-    });
+    } finally {
+      if (rebuildsTables) this.raw.exec('PRAGMA foreign_keys = ON;');
+    }
   }
 }

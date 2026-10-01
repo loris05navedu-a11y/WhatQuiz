@@ -1,20 +1,18 @@
-import type { CSSProperties } from 'react';
 import { LIMITS, POINTS_OPTIONS, QUESTION_TYPE_LABELS, QUESTION_TYPES, TIME_LIMITS } from '../../../shared/constants';
+import { QUESTION_TYPE_DEFINITIONS } from '../../../shared/questionTypes';
 import { questionProblem } from '../../../shared/quizRules';
-import type { AnswerInput, QuestionType } from '../../../shared/types';
+import type { QuestionType } from '../../../shared/types';
 import { Button } from '../components/Button';
 import { Segmented, Switch, TextAreaField } from '../components/Form';
-import { Icon, type IconName } from '../components/Icon';
-import { CHOICE_LETTERS } from '../game/ChoiceTile';
+import { Icon } from '../components/Icon';
+import { AnswersEditor } from '../questionTypes/editors';
+import { TYPE_ICONS } from '../questionTypes/meta';
 import { convertQuestion, type DraftQuestion } from './draft';
 import { ImagePicker } from './ImagePicker';
 
-export const TYPE_ICONS: Record<QuestionType, IconName> = {
-  single: 'circleDot',
-  multiple: 'checkSquare',
-  truefalse: 'toggle',
-  text: 'text',
-};
+export { TYPE_ICONS };
+
+const formatTime = (t: number) => (t < 60 ? `${t} s` : t % 60 === 0 ? `${t / 60} min` : `${Math.floor(t / 60)} min ${t % 60}`);
 
 interface QuestionEditorProps {
   question: DraftQuestion;
@@ -51,15 +49,20 @@ export function QuestionEditor({ question, index, total, onChange, onMove, onDup
         </p>
       )}
 
-      <div className="field">
+      <label className="field">
         <span className="field-label">Type de question</span>
-        <Segmented
-          label="Type de question"
-          value={question.type}
-          onChange={(type) => onChange(convertQuestion(question, type))}
-          options={QUESTION_TYPES.map((type) => ({ value: type, label: QUESTION_TYPE_LABELS[type], icon: TYPE_ICONS[type] }))}
-        />
-      </div>
+        <span className="type-select">
+          <Icon name={TYPE_ICONS[question.type]} size={20} />
+          <select className="input" value={question.type} onChange={(e) => onChange(convertQuestion(question, e.target.value as QuestionType))}>
+            {QUESTION_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {QUESTION_TYPE_LABELS[type]}
+              </option>
+            ))}
+          </select>
+        </span>
+        <span className="field-hint">{QUESTION_TYPE_DEFINITIONS[question.type].description}</span>
+      </label>
 
       <TextAreaField
         label="Énoncé"
@@ -74,7 +77,17 @@ export function QuestionEditor({ question, index, total, onChange, onMove, onDup
 
       <ImagePicker label="Ajouter une image" value={question.imageUrl} onChange={(imageUrl) => update({ imageUrl })} />
 
-      <AnswersEditor question={question} onChange={(answers) => update({ answers })} />
+      <AnswersEditor question={question} onChange={update} />
+
+      <TextAreaField
+        label="Explication (facultatif)"
+        value={question.explanation ?? ''}
+        onChange={(e) => update({ explanation: e.target.value })}
+        maxLength={LIMITS.explanation}
+        placeholder="Affichée avec la correction : pourquoi c’est la bonne réponse…"
+        rows={2}
+        hint={`${(question.explanation ?? '').length}/${LIMITS.explanation}`}
+      />
 
       <div className="editor-settings">
         <div className="field">
@@ -86,15 +99,19 @@ export function QuestionEditor({ question, index, total, onChange, onMove, onDup
             className="chips"
             value={question.timeLimit}
             onChange={(timeLimit) => update({ timeLimit })}
-            options={TIME_LIMITS.map((t) => ({ value: t, label: t < 60 ? `${t} s` : `${t / 60} min` }))}
+            options={TIME_LIMITS.map((t) => ({ value: t, label: formatTime(t) }))}
           />
         </div>
         <div className="field">
           <span className="field-label">
             <Icon name="star" size={16} /> Points
           </span>
-          <Switch label="Compter les points" checked={question.pointsEnabled} onChange={(pointsEnabled) => update({ pointsEnabled })} />
-          {question.pointsEnabled && (
+          {!QUESTION_TYPE_DEFINITIONS[question.type].scored ? (
+            <span className="field-hint">Pas de points : ce type de question n’a pas de bonne réponse.</span>
+          ) : (
+            <Switch label="Compter les points" checked={question.pointsEnabled} onChange={(pointsEnabled) => update({ pointsEnabled })} />
+          )}
+          {question.pointsEnabled && QUESTION_TYPE_DEFINITIONS[question.type].scored && (
             <Segmented
               label="Nombre de points"
               className="chips"
@@ -103,95 +120,16 @@ export function QuestionEditor({ question, index, total, onChange, onMove, onDup
               options={POINTS_OPTIONS.map((p) => ({ value: p, label: p === 1000 ? '1000 (standard)' : p === 2000 ? '2000 (double)' : `${p}` }))}
             />
           )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AnswersEditor({ question, onChange }: { question: DraftQuestion; onChange: (answers: AnswerInput[]) => void }) {
-  const { answers, type } = question;
-  const setAnswer = (index: number, patch: Partial<AnswerInput>) => onChange(answers.map((a, i) => (i === index ? { ...a, ...patch } : a)));
-
-  if (type === 'text') {
-    return (
-      <div className="field">
-        <span className="field-label">Réponses acceptées</span>
-        <span className="field-hint">Majuscules, accents et espaces en trop sont ignorés. Ajoutez des variantes si besoin.</span>
-        <div className="stack" style={{ '--gap': '8px' } as CSSProperties}>
-          {answers.map((answer, index) => (
-            <div key={index} className="row accepted-row">
-              <input
-                className="input"
-                value={answer.text}
-                maxLength={LIMITS.answerText}
-                placeholder={index === 0 ? 'Réponse attendue' : 'Variante acceptée'}
-                aria-label={`Réponse acceptée ${index + 1}`}
-                onChange={(e) => setAnswer(index, { text: e.target.value })}
-              />
-              {answers.length > 1 && (
-                <Button variant="ghost" icon="x" aria-label={`Retirer la réponse ${index + 1}`} onClick={() => onChange(answers.filter((_, i) => i !== index))} />
-              )}
-            </div>
-          ))}
-        </div>
-        {answers.length < LIMITS.maxAcceptedAnswers && (
-          <Button variant="ghost" icon="plus" onClick={() => onChange([...answers, { text: '', isCorrect: true }])}>
-            Ajouter une variante
-          </Button>
-        )}
-      </div>
-    );
-  }
-
-  const toggleCorrect = (index: number) => {
-    if (type === 'multiple') setAnswer(index, { isCorrect: !answers[index].isCorrect });
-    else onChange(answers.map((a, i) => ({ ...a, isCorrect: i === index })));
-  };
-
-  return (
-    <div className="field">
-      <span className="field-label">Réponses</span>
-      <span className="field-hint">
-        {type === 'multiple' ? 'Touchez ✓ pour marquer toutes les bonnes réponses.' : 'Touchez ✓ pour choisir la bonne réponse.'}
-      </span>
-      <div className="answer-editor-grid">
-        {answers.map((answer, index) => (
-          <div key={index} className={`answer-editor choice-${index}${answer.isCorrect ? ' is-correct' : ''}`}>
-            <span className="choice-letter" aria-hidden="true">
-              {CHOICE_LETTERS[index]}
-            </span>
-            <input
-              className="answer-editor-input"
-              value={answer.text}
-              maxLength={LIMITS.answerText}
-              placeholder={`Réponse ${CHOICE_LETTERS[index]}`}
-              aria-label={`Texte de la réponse ${CHOICE_LETTERS[index]}`}
-              readOnly={type === 'truefalse'}
-              onChange={(e) => setAnswer(index, { text: e.target.value })}
+          {question.pointsEnabled && QUESTION_TYPE_DEFINITIONS[question.type].scored && (
+            <Switch
+              label="Question bonus"
+              description="Points doublés, annoncée aux élèves par un bandeau « Bonus »."
+              checked={question.bonus ?? false}
+              onChange={(bonus) => update({ bonus })}
             />
-            <button
-              type="button"
-              className="correct-toggle"
-              aria-pressed={answer.isCorrect}
-              aria-label={`Réponse ${CHOICE_LETTERS[index]} correcte`}
-              onClick={() => toggleCorrect(index)}
-            >
-              <Icon name="check" size={22} strokeWidth={3} />
-            </button>
-            {type !== 'truefalse' && answers.length > LIMITS.minChoices && (
-              <button type="button" className="answer-remove" aria-label={`Supprimer la réponse ${CHOICE_LETTERS[index]}`} onClick={() => onChange(answers.filter((_, i) => i !== index))}>
-                <Icon name="x" size={16} />
-              </button>
-            )}
-          </div>
-        ))}
+          )}
+        </div>
       </div>
-      {type !== 'truefalse' && answers.length < LIMITS.maxChoices && (
-        <Button variant="ghost" icon="plus" onClick={() => onChange([...answers, { text: '', isCorrect: false }])}>
-          Ajouter une réponse
-        </Button>
-      )}
     </div>
   );
 }

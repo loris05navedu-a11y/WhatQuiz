@@ -1,5 +1,8 @@
-/** Schéma SQLite. Chaque migration est appliquée une seule fois (table `migrations`). */
-export const MIGRATIONS: string[] = [
+/** Une migration : du SQL, ou un objet si elle reconstruit des tables (clés étrangères désactivées le temps de la migration). */
+export type Migration = string | { sql: string; rebuildsTables: true };
+
+/** Schéma SQLite. Chaque migration est appliquée une seule fois (table `migrations`), dans l'ordre. */
+export const MIGRATIONS: Migration[] = [
   `
   CREATE TABLE users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,4 +114,29 @@ export const MIGRATIONS: string[] = [
     UNIQUE (game_id, player_id)
   );
   `,
+  // Types de questions extensibles : le type n'est plus figé par une contrainte CHECK (validé par l'application,
+  // voir shared/questionTypes). `extra` porte les données propres à chaque type (JSON), `match_text` les associations.
+  {
+    rebuildsTables: true,
+    sql: `
+    CREATE TABLE questions_new (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      quiz_id        INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+      position       INTEGER NOT NULL,
+      type           TEXT NOT NULL,
+      text           TEXT NOT NULL,
+      image_url      TEXT,
+      time_limit     INTEGER NOT NULL,
+      points         INTEGER NOT NULL,
+      points_enabled INTEGER NOT NULL DEFAULT 1,
+      extra          TEXT NOT NULL DEFAULT '{}'
+    );
+    INSERT INTO questions_new (id, quiz_id, position, type, text, image_url, time_limit, points, points_enabled)
+      SELECT id, quiz_id, position, type, text, image_url, time_limit, points, points_enabled FROM questions;
+    DROP TABLE questions;
+    ALTER TABLE questions_new RENAME TO questions;
+    CREATE INDEX idx_questions_quiz ON questions(quiz_id, position);
+    ALTER TABLE answers ADD COLUMN match_text TEXT;
+    `,
+  },
 ];

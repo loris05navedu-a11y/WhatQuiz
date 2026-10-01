@@ -1,4 +1,17 @@
-export const QUESTION_TYPES = ['single', 'multiple', 'truefalse', 'text'] as const;
+/** Types de questions. Comportement de chaque type : shared/questionTypes.ts ; affichage : client/src/questionTypes/. */
+export const QUESTION_TYPES = [
+  'single',
+  'multiple',
+  'truefalse',
+  'text',
+  'numeric',
+  'slider',
+  'order',
+  'match',
+  'ranking',
+  'poll',
+  'wordcloud',
+] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
 
 export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
@@ -6,9 +19,16 @@ export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   multiple: 'QCM — plusieurs réponses',
   truefalse: 'Vrai / Faux',
   text: 'Réponse texte',
+  numeric: 'Réponse numérique',
+  slider: 'Curseur',
+  order: 'Remettre dans l’ordre',
+  match: 'Association',
+  ranking: 'Classement (avis)',
+  poll: 'Sondage',
+  wordcloud: 'Nuage de mots',
 };
 
-export const TIME_LIMITS = [5, 10, 15, 20, 30, 45, 60, 120] as const;
+export const TIME_LIMITS = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240] as const;
 export const POINTS_OPTIONS = [500, 1000, 2000] as const;
 export const DEFAULT_TIME_LIMIT = 20;
 export const DEFAULT_POINTS = 1000;
@@ -28,6 +48,11 @@ export const LIMITS = {
   minPassword: 8,
   maxPlayers: 200,
   maxBots: 30,
+  minItems: 2,
+  maxItems: 8,
+  explanation: 500,
+  wordcloudAnswer: 30,
+  unit: 15,
 } as const;
 
 export const CATEGORIES = [

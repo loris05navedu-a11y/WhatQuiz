@@ -1,36 +1,12 @@
-import type { QuestionType, ScoringMode, SubmittedAnswer } from './types';
+import { gradeAnswer, type Grade, type GradableQuestion } from './questionTypes';
+import type { ScoringMode, SubmittedAnswer } from './types';
 
-export interface GradableQuestion {
-  type: QuestionType;
-  answers: { text: string; isCorrect: boolean }[];
-}
+export { normalizeText } from './text';
+export { correctChoiceIndexes, type GradableQuestion } from './questionTypes';
 
-/** Normalise une réponse libre : casse, accents, espaces et ponctuation finale ignorés. */
-export function normalizeText(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[.!?;,]+$/, '')
-    .trim();
-}
-
-export function correctChoiceIndexes(question: GradableQuestion): number[] {
-  return question.answers.flatMap((answer, index) => (answer.isCorrect ? [index] : []));
-}
-
+/** Bonne réponse ou non, sans mélange des choix (la correction détaillée est dans shared/questionTypes). */
 export function isAnswerCorrect(question: GradableQuestion, answer: SubmittedAnswer): boolean {
-  if (question.type === 'text') {
-    if (answer.kind !== 'text') return false;
-    const given = normalizeText(answer.text);
-    return given.length > 0 && question.answers.some((accepted) => normalizeText(accepted.text) === given);
-  }
-  if (answer.kind !== 'choice') return false;
-  const expected = correctChoiceIndexes(question);
-  const given = [...new Set(answer.choices)].sort((a, b) => a - b);
-  return given.length === expected.length && given.every((choice, i) => choice === expected[i]);
+  return gradeAnswer(question, answer).correct;
 }
 
 export interface PointsInput {
@@ -53,4 +29,11 @@ export function computePoints(input: PointsInput): number {
   if (input.mode === 'fixed') return input.basePoints;
   const ratio = Math.min(Math.max(input.responseMs / input.timeLimitMs, 0), 1);
   return Math.round(input.basePoints * (1 - ratio / 2));
+}
+
+/** Points d'une réponse corrigée : crédit partiel (ordre, association) et question bonus (×2). */
+export function pointsForGrade(grade: Grade, input: Omit<PointsInput, 'correct'> & { bonus?: boolean }): number {
+  if (grade.ratio <= 0) return 0;
+  const full = computePoints({ ...input, correct: true });
+  return Math.round(full * grade.ratio * (input.bonus ? 2 : 1));
 }

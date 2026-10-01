@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CATEGORIES, LIMITS, QUESTION_TYPES, TIME_LIMITS } from '../../shared/constants';
+import { normalizeQuestion } from '../../shared/questionTypes';
 import { questionProblem } from '../../shared/quizRules';
 
 z.config(z.locales.fr());
@@ -49,7 +50,22 @@ export const passwordChangeSchema = z.object({
 const answerSchema = z.object({
   text: trimmed(LIMITS.answerText),
   isCorrect: z.boolean(),
+  match: trimmed(LIMITS.answerText).optional(),
 });
+
+const finiteNumber = z.number().finite().min(-1e12).max(1e12);
+
+/** Réglages des questions numériques et curseurs (cohérence vérifiée par shared/questionTypes). */
+const configSchema = z
+  .object({
+    answer: finiteNumber.optional(),
+    tolerance: finiteNumber.min(0).optional(),
+    unit: trimmed(LIMITS.unit).optional(),
+    min: finiteNumber.optional(),
+    max: finiteNumber.optional(),
+    step: finiteNumber.positive().optional(),
+  })
+  .optional();
 
 const buildQuizSchema = (allowEmbedded: boolean) => {
   const imageUrl = imageUrlSchema(allowEmbedded);
@@ -62,10 +78,11 @@ const buildQuizSchema = (allowEmbedded: boolean) => {
       points: z.number().int().min(0).max(5000),
       pointsEnabled: z.boolean(),
       answers: z.array(answerSchema).max(LIMITS.maxAcceptedAnswers),
+      explanation: trimmed(LIMITS.explanation).default(''),
+      bonus: z.boolean().default(false),
+      config: configSchema,
     })
-    .transform((question) =>
-      question.type === 'text' ? { ...question, answers: question.answers.map((a) => ({ ...a, isCorrect: true })) } : question,
-    )
+    .transform((question) => normalizeQuestion(question))
     .superRefine((question, ctx) => {
       const problem = questionProblem(question);
       if (problem) ctx.addIssue({ code: 'custom', message: problem });
@@ -109,6 +126,9 @@ export const joinSchema = z.object({
 export const submittedAnswerSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('choice'), choices: z.array(z.number().int().min(0).max(LIMITS.maxChoices - 1)).max(LIMITS.maxChoices) }),
   z.object({ kind: z.literal('text'), text: z.string().max(LIMITS.answerText) }),
+  z.object({ kind: z.literal('number'), value: finiteNumber }),
+  z.object({ kind: z.literal('order'), order: z.array(z.number().int().min(0).max(LIMITS.maxItems - 1)).max(LIMITS.maxItems) }),
+  z.object({ kind: z.literal('match'), pairs: z.array(z.number().int().min(0).max(LIMITS.maxChoices - 1)).max(LIMITS.maxChoices) }),
 ]);
 
 export const answerPayloadSchema = z.object({

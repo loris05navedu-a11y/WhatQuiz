@@ -9,7 +9,8 @@ import { LogoMark } from '../components/Logo';
 import { homePathFor, useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { AnswerInput } from '../game/AnswerInput';
-import { CHOICE_LETTERS, ChoiceTile } from '../game/ChoiceTile';
+import { describeAnswer } from '../questionTypes/meta';
+import { Explanation, PlayerCorrection } from '../questionTypes/results';
 import { Leaderboard, Podium } from '../game/Leaderboard';
 import { QuestionMeta, QuestionStatement } from '../game/QuestionView';
 import { Timer } from '../game/Timer';
@@ -230,7 +231,7 @@ function QuestionPhase({ view, game }: { view: PlayerView; game: Game }) {
         <QuestionMeta question={question} />
         <Timer timer={view.timer} offset={game.clockOffset} variant="bar" />
       </div>
-      <QuestionStatement text={question.text} imageUrl={question.imageUrl} />
+      <QuestionStatement text={question.text} imageUrl={question.imageUrl} media={question.media} />
       {paused && (
         <div className="paused-overlay" role="status">
           <Icon name="pause" size={32} /> Partie en pause
@@ -242,7 +243,7 @@ function QuestionPhase({ view, game }: { view: PlayerView; game: Game }) {
             <Icon name="check" size={40} strokeWidth={3} />
           </div>
           <h2>Réponse enregistrée</h2>
-          <p className="stage-sub">{describeAnswer(view.myAnswer!, question.choices)}</p>
+          <p className="stage-sub">{describeAnswer(view.myAnswer!, question)}</p>
           {view.allowAnswerChange && (
             <Button variant="ghost" className="btn-inverse" icon="edit" onClick={() => setEditing(true)} disabled={paused}>
               Modifier ma réponse
@@ -256,11 +257,6 @@ function QuestionPhase({ view, game }: { view: PlayerView; game: Game }) {
   );
 }
 
-function describeAnswer(answer: SubmittedAnswer, choices: string[]): string {
-  if (answer.kind === 'text') return `« ${answer.text} »`;
-  return answer.choices.map((index) => `${CHOICE_LETTERS[index]}. ${choices[index]}`).join(' · ');
-}
-
 function RevealPhase({ view }: { view: PlayerView }) {
   const question = view.question;
   if (!view.answersVisible || !view.outcome || !question) {
@@ -272,37 +268,32 @@ function RevealPhase({ view }: { view: PlayerView }) {
     );
   }
 
-  const { outcome, correction } = view;
-  const status = !outcome.answered ? 'none' : outcome.correct ? 'right' : 'wrong';
-  const selected = view.myAnswer?.kind === 'choice' ? view.myAnswer.choices : [];
+  const { outcome } = view;
+  const scored = outcome.scored !== false;
+  const partial = scored && outcome.answered && !outcome.correct && outcome.points > 0;
+  const status = !outcome.answered ? 'none' : !scored ? 'noted' : outcome.correct ? 'right' : partial ? 'partial' : 'wrong';
+  const titles = {
+    none: 'Pas de réponse',
+    noted: 'Merci pour votre réponse !',
+    right: 'Bonne réponse !',
+    partial: `Presque ! ${Math.round((outcome.ratio ?? 0) * 100)} % juste`,
+    wrong: 'Mauvaise réponse',
+  };
+  const icons = { none: 'clock', noted: 'check', right: 'check', partial: 'target', wrong: 'x' } as const;
 
   return (
     <div className="reveal-phase animate-in" key={question.index}>
       <div className={`outcome outcome-${status}`} role="status">
-        <Icon name={status === 'right' ? 'check' : status === 'wrong' ? 'x' : 'clock'} size={34} strokeWidth={3} />
+        <Icon name={icons[status]} size={34} strokeWidth={3} />
         <div>
-          <h2>{status === 'right' ? 'Bonne réponse !' : status === 'wrong' ? 'Mauvaise réponse' : 'Pas de réponse'}</h2>
-          {status === 'right' && outcome.points > 0 && <p className="outcome-points">+{formatNumber(outcome.points)} points</p>}
+          <h2>{titles[status]}</h2>
+          {outcome.points > 0 && <p className="outcome-points">+{formatNumber(outcome.points)} points</p>}
         </div>
       </div>
 
       <p className="reveal-question">{question.text}</p>
-      {question.type === 'text' ? (
-        <div className="accepted-answers">
-          {view.myAnswer?.kind === 'text' && <p>Votre réponse : « {view.myAnswer.text} »</p>}
-          <p>
-            Réponse attendue : <b>{correction?.acceptedAnswers.join(' / ')}</b>
-          </p>
-        </div>
-      ) : (
-        <div className={`choices choices-${question.choices.length} choices-compact`}>
-          {question.choices.map((choice, index) => {
-            const correct = correction?.correctChoices.includes(index) ?? false;
-            const mine = selected.includes(index);
-            return <ChoiceTile key={index} index={index} text={choice} state={correct ? 'correct' : mine ? 'wrong' : 'dimmed'} />;
-          })}
-        </div>
-      )}
+      <PlayerCorrection question={question} correction={view.correction} mine={view.myAnswer} />
+      <Explanation text={view.correction?.explanation} />
 
       {view.leaderboard && (
         <section className="stack" aria-label="Classement">

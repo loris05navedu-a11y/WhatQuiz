@@ -1,6 +1,7 @@
 import { ZodError } from 'zod';
 import { DEMO_QUIZ } from '../../../server/src/demo/demoQuiz';
 import { GameError } from '../../../server/src/game/errors';
+import { isScored } from '../../../shared/questionTypes';
 import { z } from 'zod';
 import {
   createGameSchema,
@@ -212,7 +213,7 @@ function effectiveStatus(game: LocalGame): GameSummary['status'] {
 function toSummary(game: LocalGame): GameSummary {
   const status = effectiveStatus(game);
   const playerCount = game.players.filter((p) => !p.kicked).length;
-  const possible = playerCount * game.questionsPlayed;
+  const possible = playerCount * game.snapshot.questions.slice(0, game.questionsPlayed).filter(isScored).length;
   const correctTotal = game.results.reduce((sum, r) => sum + r.correctCount, 0);
   return {
     id: game.id,
@@ -276,6 +277,7 @@ function results(game: LocalGame): GameResults {
       index,
       text: question.text,
       type: question.type,
+      scored: isScored(question),
       answeredCount: stat?.answered ?? 0,
       correctCount,
       successRate: players.length ? correctCount / players.length : 0,
@@ -285,7 +287,7 @@ function results(game: LocalGame): GameResults {
   const answerCount = questions.reduce((sum, q) => sum + q.answeredCount, 0);
   const totalMs = [...perQuestion.values()].reduce((sum, s) => sum + s.totalMs, 0);
   const timedCount = [...perQuestion.values()].reduce((sum, s) => sum + s.answered, 0);
-  const sorted = [...questions].sort((a, b) => a.successRate - b.successRate);
+  const sorted = questions.filter((q) => q.scored).sort((a, b) => a.successRate - b.successRate);
   return {
     game: summary,
     settings: game.settings,

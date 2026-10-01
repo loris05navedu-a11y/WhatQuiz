@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useBlocker, useNavigate, useParams } from 'react-router';
 import { CATEGORIES, LIMITS, QUESTION_TYPE_LABELS, QUESTION_TYPES } from '../../../shared/constants';
+import { QUESTION_TYPE_DEFINITIONS } from '../../../shared/questionTypes';
 import { questionProblem, quizProblems } from '../../../shared/quizRules';
 import type { QuestionInput, QuestionType } from '../../../shared/types';
 import { errorMessage } from '../api/client';
@@ -258,12 +259,13 @@ export function QuizEditorPage() {
       </div>
 
       {adding && (
-        <Modal title="Nouvelle question" onClose={() => setAdding(false)}>
+        <Modal title="Nouvelle question" onClose={() => setAdding(false)} wide>
           <div className="type-picker">
             {QUESTION_TYPES.map((type) => (
               <button key={type} type="button" className="type-option" onClick={() => addQuestion(type)}>
                 <Icon name={TYPE_ICONS[type]} size={28} />
                 <b>{QUESTION_TYPE_LABELS[type]}</b>
+                <span className="type-option-desc">{QUESTION_TYPE_DEFINITIONS[type].description}</span>
               </button>
             ))}
           </div>

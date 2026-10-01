@@ -1,7 +1,10 @@
 import { ERRORS, LIMITS } from '../../../shared/constants';
 import { randomToken, randomUuid } from '../../../shared/random';
-import { computePoints, correctChoiceIndexes, isAnswerCorrect, normalizeText } from '../../../shared/scoring';
+import { questionType, type QuestionLayout } from '../../../shared/questionTypes';
+import { pointsForGrade } from '../../../shared/scoring';
+import { normalizeText } from '../../../shared/text';
 import type {
+  Correction,
   GamePhase,
   GameSettings,
   HostAction,
@@ -11,7 +14,6 @@ import type {
   PublicQuestion,
   QuestionInput,
   SubmittedAnswer,
-  TextAnswerStat,
   TimerState,
 } from '../../../shared/types';
 import type { GameRepository, QuizSnapshot } from '../db/games';
@@ -40,8 +42,11 @@ export interface RoomTransport {
 }
 
 interface RecordedAnswer {
+  /** Réponse de référence (ordre d'origine de la question). */
   answer: SubmittedAnswer;
   correct: boolean;
+  /** Part juste de la réponse (crédit partiel). */
+  ratio: number;
   points: number;
   responseMs: number;
 }
@@ -95,6 +100,7 @@ export class GameRoom {
   endedAt: number | null = null;
 
   private readonly snapshot: QuizSnapshot;
+  private readonly layouts: QuestionLayout[];
   private readonly store: RoomStore | null;
   private readonly transport: RoomTransport;
   private readonly autoStartOnJoin: boolean;
@@ -127,6 +133,8 @@ export class GameRoom {
     this.store = options.store;
     this.transport = options.transport;
     this.autoStartOnJoin = options.autoStartOnJoin ?? false;
+    // Ordre de présentation tiré une fois par partie (identique pour tous les joueurs).
+    this.layouts = this.snapshot.questions.map((q) => questionType(q.type).layout(q, Math.random, false));
   }
 
   get quizId(): number {
@@ -256,19 +264,21 @@ export class GameRoom {
     const now = Date.now();
     if (this.endsAt === null || now >= this.endsAt) throw new GameError(ERRORS.timeUp);
     if (player.answers.has(questionIndex) && !this.settings.allowAnswerChange) throw new GameError(ERRORS.alreadyAnswered);
-    if (!answerMatchesType(question, answer)) throw new GameError(ERRORS.invalidInput);
+    const definition = questionType(question.type);
+    const accepted = definition.accept(answer, question, this.layouts[questionIndex]);
+    if (!accepted) throw new GameError(ERRORS.invalidInput);
 
     const responseMs = Math.max(0, now - this.openedAt - this.pausedTotal);
-    const correct = isAnswerCorrect(question, answer);
-    const points = computePoints({
-      correct,
+    const grade = definition.grade(question, accepted);
+    const points = pointsForGrade(grade, {
       basePoints: question.points,
-      pointsEnabled: question.pointsEnabled,
+      pointsEnabled: question.pointsEnabled && definition.scored,
+      bonus: question.bonus,
       mode: this.settings.scoringMode,
       responseMs,
       timeLimitMs: question.timeLimit * 1000,
     });
-    const recorded = { answer: sanitizeAnswer(answer), correct, points, responseMs };
+    const recorded: RecordedAnswer = { answer: accepted, correct: grade.correct, ratio: grade.ratio, points, responseMs };
     player.answers.set(questionIndex, recorded);
     this.store?.saveAnswer({ gameId: this.id, playerId, questionIndex, ...recorded });
     this.touch();
@@ -551,7 +561,7 @@ export class GameRoom {
       if (this.phase !== 'question' || this.questionIndex !== index || !this.players.has(bot.id)) return;
       if (this.paused) return this.scheduleBot(bot);
       try {
-        this.answer(bot.id, index, pickBotAnswer(question));
+        this.answer(bot.id, index, pickBotAnswer(question, this.layouts[index]));
       } catch {
         // Temps écoulé pendant le délai : le bot ne répond simplement pas.
       }
@@ -634,52 +644,52 @@ export class GameRoom {
   private publicQuestion(): PublicQuestion | null {
     const question = this.currentQuestion;
     if (!question || this.phase === 'lobby' || this.phase === 'ended') return null;
+    const definition = questionType(question.type);
     return {
       index: this.questionIndex,
       total: this.questionCount,
       type: question.type,
       text: question.text,
       imageUrl: question.imageUrl,
-      choices: question.type === 'text' ? [] : question.answers.map((a) => a.text),
+      ...definition.publicPart(question, this.layouts[this.questionIndex]),
       timeLimit: question.timeLimit,
-      points: question.points,
-      pointsEnabled: question.pointsEnabled && this.settings.scoringMode !== 'none',
+      points: question.bonus ? question.points * 2 : question.points,
+      pointsEnabled: question.pointsEnabled && definition.scored && this.settings.scoringMode !== 'none',
+      bonus: question.bonus || undefined,
+      media: question.media?.length ? question.media : undefined,
+      scored: definition.scored,
     };
+  }
+
+  /** Correction de la question en cours, dans l'ordre affiché aux élèves. */
+  private correction(): Correction | null {
+    const question = this.currentQuestion;
+    if (!question) return null;
+    const correction = questionType(question.type).correction(question, this.layouts[this.questionIndex]);
+    return question.explanation ? { ...correction, explanation: question.explanation } : correction;
   }
 
   private hostQuestion(): HostQuestion | null {
     const base = this.publicQuestion();
     const question = this.currentQuestion;
     if (!base || !question) return null;
-    return {
-      ...base,
-      correctChoices: question.type === 'text' ? [] : correctChoiceIndexes(question),
-      acceptedAnswers: question.type === 'text' ? question.answers.map((a) => a.text) : [],
-    };
+    return { ...base, ...this.correction()! };
   }
 
-  private answerStats(): Pick<HostView, 'distribution' | 'textAnswers' | 'correctCount'> {
+  private answerStats(): Pick<HostView, 'distribution' | 'textAnswers' | 'correctCount' | 'stats'> {
     const question = this.currentQuestion;
     if (!question || (this.phase !== 'reveal' && this.phase !== 'question')) {
-      return { distribution: null, textAnswers: null, correctCount: null };
+      return { distribution: null, textAnswers: null, correctCount: null, stats: null };
     }
+    const definition = questionType(question.type);
     const answers = this.activePlayers.flatMap((p) => p.answers.get(this.questionIndex) ?? []);
-    const correctCount = answers.filter((a) => a.correct).length;
-    if (question.type === 'text') {
-      const grouped = new Map<string, TextAnswerStat>();
-      for (const a of answers) {
-        if (a.answer.kind !== 'text') continue;
-        const key = normalizeText(a.answer.text);
-        const stat = grouped.get(key) ?? { text: a.answer.text.trim(), count: 0, correct: a.correct };
-        stat.count += 1;
-        grouped.set(key, stat);
-      }
-      const textAnswers = [...grouped.values()].sort((x, y) => y.count - x.count).slice(0, 12);
-      return { distribution: null, textAnswers, correctCount };
-    }
-    const distribution = question.answers.map(() => 0);
-    for (const a of answers) if (a.answer.kind === 'choice') for (const c of a.answer.choices) distribution[c] += 1;
-    return { distribution, textAnswers: null, correctCount };
+    const stats = definition.stats(question, answers, this.layouts[this.questionIndex]);
+    return {
+      distribution: stats.kind === 'choices' ? stats.counts : null,
+      textAnswers: stats.kind === 'texts' ? stats.items : null,
+      correctCount: definition.scored ? answers.filter((a) => a.correct).length : null,
+      stats,
+    };
   }
 
   hostView(): HostView {
@@ -737,18 +747,19 @@ export class GameRoom {
       questionCount: this.questionCount,
       question: this.publicQuestion(),
       timer: this.timerState(),
-      myAnswer: recorded?.answer ?? null,
+      myAnswer: recorded && question ? questionType(question.type).toDisplay(recorded.answer, this.layouts[this.questionIndex]) : null,
       answersVisible: showCorrection,
-      correction:
+      correction: showCorrection ? this.correction() : null,
+      outcome:
         showCorrection && question
           ? {
-              correctChoices: question.type === 'text' ? [] : correctChoiceIndexes(question),
-              acceptedAnswers: question.type === 'text' ? question.answers.map((a) => a.text) : [],
+              answered: recorded !== null,
+              correct: recorded?.correct ?? false,
+              points: recorded?.points ?? 0,
+              scored: questionType(question.type).scored,
+              ratio: recorded?.ratio ?? 0,
             }
           : null,
-      outcome: showCorrection
-        ? { answered: recorded !== null, correct: recorded?.correct ?? false, points: recorded?.points ?? 0 }
-        : null,
       leaderboard: showLeaderboard && leaderboard ? leaderboard.slice(0, 5) : null,
       final:
         showFinal && leaderboard
@@ -765,17 +776,4 @@ export function cleanNickname(value: string): string | null {
     .replace(/\s+/g, ' ')
     .trim();
   return cleaned.length >= 1 && cleaned.length <= LIMITS.nickname ? cleaned : null;
-}
-
-function answerMatchesType(question: QuestionInput, answer: SubmittedAnswer): boolean {
-  if (question.type === 'text') return answer.kind === 'text' && answer.text.trim().length > 0;
-  if (answer.kind !== 'choice' || answer.choices.length === 0) return false;
-  if (answer.choices.some((c) => c >= question.answers.length)) return false;
-  return question.type === 'multiple' || answer.choices.length === 1;
-}
-
-function sanitizeAnswer(answer: SubmittedAnswer): SubmittedAnswer {
-  return answer.kind === 'text'
-    ? { kind: 'text', text: answer.text.trim() }
-    : { kind: 'choice', choices: [...new Set(answer.choices)].sort((a, b) => a - b) };
 }

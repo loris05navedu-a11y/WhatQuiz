@@ -1,4 +1,4 @@
-import { correctChoiceIndexes } from '../../../shared/scoring';
+import { questionType, type QuestionLayout } from '../../../shared/questionTypes';
 import type { QuestionInput, SubmittedAnswer } from '../../../shared/types';
 
 /** Élèves fictifs du mode démo / test : ils répondent avec un délai et une justesse aléatoires. */
@@ -26,16 +26,9 @@ export function pickBotDelay(remainingMs: number): number {
   return Math.round(remainingMs * (0.15 + Math.random() * 0.6));
 }
 
-export function pickBotAnswer(question: QuestionInput): SubmittedAnswer {
-  const right = Math.random() < BOT_ACCURACY;
-  if (question.type === 'text') {
-    return { kind: 'text', text: right ? question.answers[0]?.text ?? '?' : 'Je ne sais pas' };
-  }
-  const correct = correctChoiceIndexes(question);
-  if (right) return { kind: 'choice', choices: correct };
-  const wrong = question.answers.map((_, i) => i).filter((i) => !correct.includes(i));
-  const choice = wrong.length ? wrong[Math.floor(Math.random() * wrong.length)] : 0;
-  return { kind: 'choice', choices: [choice] };
+/** Réponse (dans l'ordre affiché) d'un élève fictif : juste avec une probabilité de 70 %. */
+export function pickBotAnswer(question: QuestionInput, layout: QuestionLayout): SubmittedAnswer {
+  return questionType(question.type).botAnswer(question, layout, Math.random() < BOT_ACCURACY, Math.random);
 }
 
 function shuffle<T>(items: readonly T[]): T[] {

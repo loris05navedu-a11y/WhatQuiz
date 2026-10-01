@@ -5,9 +5,22 @@ import { parseTextQuestions, TEXT_IMPORT_EXAMPLE } from '../../shared/textImport
 import { SAMPLE_QUIZ } from './helpers';
 
 describe('fichier de quiz', () => {
-  it('relit à l’identique un quiz exporté', () => {
+  it('relit à l’identique un quiz exporté (champs récents complétés par leur valeur par défaut)', () => {
     const file = JSON.stringify(toQuizFile(SAMPLE_QUIZ));
-    assert.deepEqual(parseQuizFile(file), SAMPLE_QUIZ);
+    const expected = { ...SAMPLE_QUIZ, questions: SAMPLE_QUIZ.questions.map((q) => ({ ...q, explanation: '', bonus: false, media: [] })) };
+    assert.deepEqual(parseQuizFile(file), expected);
+  });
+
+  it('conserve les nouveaux types, explications, bonus et réglages', () => {
+    const quiz = {
+      ...SAMPLE_QUIZ,
+      questions: [
+        { type: 'numeric' as const, text: 'Combien ?', imageUrl: null, timeLimit: 30, points: 1000, pointsEnabled: true, answers: [], explanation: 'Parce que.', bonus: true, media: [], config: { answer: 42, tolerance: 1, unit: 'cm' } },
+        { type: 'match' as const, text: 'Associez', imageUrl: null, timeLimit: 60, points: 1000, pointsEnabled: true, answers: [{ text: 'Paris', isCorrect: true, match: 'France' }, { text: 'Rome', isCorrect: true, match: 'Italie' }], explanation: '', bonus: false, media: [] },
+        { type: 'poll' as const, text: 'Votre avis ?', imageUrl: null, timeLimit: 20, points: 1000, pointsEnabled: true, answers: [{ text: 'Oui', isCorrect: false }, { text: 'Non', isCorrect: false }], explanation: '', bonus: false, media: [] },
+      ],
+    };
+    assert.deepEqual(parseQuizFile(JSON.stringify(toQuizFile(quiz))), quiz);
   });
 
   it('refuse un fichier étranger ou d’une version future', () => {

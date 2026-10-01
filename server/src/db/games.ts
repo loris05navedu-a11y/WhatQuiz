@@ -9,6 +9,7 @@ import type {
   StudentHistoryEntry,
   SubmittedAnswer,
 } from '../../../shared/types';
+import { isScored } from '../../../shared/questionTypes';
 import type { Database } from './database';
 
 export interface QuizSnapshot {
@@ -48,8 +49,17 @@ const SUMMARY_SELECT = `
     (SELECT SUM(r.correct_count) FROM game_results r WHERE r.game_id = g.id) AS correct_total
   FROM game_sessions g`;
 
+/** Questions jouées qui ont une bonne réponse (les sondages ne comptent pas dans le taux de réussite). */
+export function scoredQuestionCount(snapshot: QuizSnapshot, played: number): number {
+  return snapshot.questions.slice(0, played).filter(isScored).length;
+}
+
+function parseSnapshot(raw: string): QuizSnapshot {
+  return JSON.parse(raw) as QuizSnapshot;
+}
+
 function toSummary(row: GameRow): GameSummary {
-  const possible = row.player_count * row.questions_played;
+  const possible = row.player_count * scoredQuestionCount(parseSnapshot(row.quiz_snapshot), row.questions_played);
   return {
     id: row.id,
     code: row.code,
@@ -252,6 +262,7 @@ export class GameRepository {
         index,
         text: question.text,
         type: question.type,
+        scored: isScored(question),
         answeredCount: stat?.answered ?? 0,
         correctCount,
         successRate: playerCount ? correctCount / playerCount : 0,
@@ -263,7 +274,7 @@ export class GameRepository {
     const timed = perQuestion.filter((q) => q.avg_ms != null);
     const totalMs = timed.reduce((sum, q) => sum + (q.avg_ms ?? 0) * q.answered, 0);
     const timedCount = timed.reduce((sum, q) => sum + q.answered, 0);
-    const sorted = [...questions].sort((a, b) => a.successRate - b.successRate);
+    const sorted = questions.filter((q) => q.scored).sort((a, b) => a.successRate - b.successRate);
 
     return {
       game,

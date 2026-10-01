@@ -1,5 +1,7 @@
-import { CATEGORIES, DEFAULT_POINTS, DEFAULT_TIME_LIMIT } from '../../../shared/constants';
-import type { AnswerInput, QuestionInput, QuestionType, Quiz, QuizInput } from '../../../shared/types';
+import { CATEGORIES, DEFAULT_POINTS } from '../../../shared/constants';
+import { normalizeQuestion, questionType } from '../../../shared/questionTypes';
+import type { QuestionInput, QuestionType, Quiz, QuizInput } from '../../../shared/types';
+import { CHOICE_TYPES, ORDER_TYPES } from '../questionTypes/meta';
 
 /** Question en cours d'édition : une clé stable permet à React de suivre les déplacements. */
 export interface DraftQuestion extends QuestionInput {
@@ -13,50 +15,54 @@ export interface DraftQuiz extends Omit<QuizInput, 'questions'> {
 let counter = 0;
 export const newKey = () => `q${Date.now().toString(36)}${(counter++).toString(36)}`;
 
-const emptyChoices = (count: number): AnswerInput[] => Array.from({ length: count }, () => ({ text: '', isCorrect: false }));
-const trueFalse = (trueIsCorrect = true): AnswerInput[] => [
-  { text: 'Vrai', isCorrect: trueIsCorrect },
-  { text: 'Faux', isCorrect: !trueIsCorrect },
-];
-
-export function answersFor(type: QuestionType): AnswerInput[] {
-  switch (type) {
-    case 'single':
-    case 'multiple':
-      return emptyChoices(4);
-    case 'truefalse':
-      return trueFalse();
-    case 'text':
-      return [{ text: '', isCorrect: true }];
-  }
+export function answersFor(type: QuestionType) {
+  return questionType(type).createAnswers();
 }
 
 export function createQuestion(type: QuestionType): DraftQuestion {
+  const definition = questionType(type);
+  const config = definition.createConfig?.();
   return {
     key: newKey(),
     type,
     text: '',
     imageUrl: null,
-    timeLimit: type === 'truefalse' ? 10 : type === 'text' ? 30 : DEFAULT_TIME_LIMIT,
+    timeLimit: definition.defaultTimeLimit,
     points: DEFAULT_POINTS,
     pointsEnabled: true,
-    answers: answersFor(type),
+    answers: definition.createAnswers(),
+    explanation: '',
+    bonus: false,
+    media: [],
+    ...(config ? { config } : {}),
   };
 }
 
-/** Change le type d'une question en conservant ce qui peut l'être. */
+/** Change le type d'une question en conservant ce qui peut l'être (énoncé, médias, textes des choix…). */
 export function convertQuestion(question: DraftQuestion, type: QuestionType): DraftQuestion {
   if (question.type === type) return question;
-  const wasChoice = question.type === 'single' || question.type === 'multiple';
-  let answers: AnswerInput[];
-  if (type === 'truefalse') answers = trueFalse();
-  else if (type === 'text') answers = [{ text: wasChoice ? (question.answers.find((a) => a.isCorrect)?.text ?? '') : '', isCorrect: true }];
-  else if (!wasChoice) answers = emptyChoices(4);
-  else if (type === 'single') {
+  const fresh = createQuestion(type);
+  const texts = question.answers.map((a) => a.text).filter((t) => t.trim());
+  let answers = fresh.answers;
+  if (type === 'truefalse') answers = fresh.answers;
+  else if (type === 'text') answers = [{ text: question.answers.find((a) => a.isCorrect && a.text.trim())?.text ?? '', isCorrect: true }];
+  else if ((CHOICE_TYPES.has(type) || ORDER_TYPES.has(type)) && (CHOICE_TYPES.has(question.type) || ORDER_TYPES.has(question.type)) && question.type !== 'truefalse') {
+    // QCM ↔ sondage ↔ ordre : les textes des choix sont gardés (la bonne réponse unique est conservée si possible).
     const firstCorrect = question.answers.findIndex((a) => a.isCorrect);
-    answers = question.answers.map((a, i) => ({ ...a, isCorrect: i === firstCorrect }));
-  } else answers = question.answers;
-  return { ...question, type, answers };
+    answers = question.answers.map((a, i) => ({ text: a.text, isCorrect: type === 'multiple' ? a.isCorrect : type === 'single' ? i === Math.max(firstCorrect, 0) : true }));
+  } else if (type === 'match' && texts.length >= 2) answers = texts.slice(0, 6).map((text) => ({ text, isCorrect: true, match: '' }));
+  return {
+    ...fresh,
+    key: question.key,
+    text: question.text,
+    imageUrl: question.imageUrl,
+    media: question.media ?? [],
+    explanation: question.explanation ?? '',
+    bonus: question.bonus ?? false,
+    points: question.points,
+    pointsEnabled: question.pointsEnabled,
+    answers: normalizeQuestion({ ...fresh, answers }).answers,
+  };
 }
 
 export function toDraft(quiz?: Quiz): DraftQuiz {
@@ -66,7 +72,7 @@ export function toDraft(quiz?: Quiz): DraftQuiz {
     description: quiz.description,
     imageUrl: quiz.imageUrl,
     category: quiz.category,
-    questions: quiz.questions.map(({ id: _id, position: _position, ...question }) => ({ ...question, key: newKey() })),
+    questions: quiz.questions.map(({ id: _id, position: _position, ...question }) => ({ explanation: '', bonus: false, media: [], ...question, key: newKey() })),
   };
 }
 
@@ -76,10 +82,13 @@ export function toInput(draft: DraftQuiz): QuizInput {
     title: draft.title.trim(),
     description: draft.description.trim(),
     category: draft.category.trim(),
-    questions: draft.questions.map(({ key: _key, ...question }) => ({
-      ...question,
-      text: question.text.trim(),
-      answers: question.answers.map((a) => ({ ...a, text: a.text.trim() })),
-    })),
+    questions: draft.questions.map(({ key: _key, ...question }) =>
+      normalizeQuestion({
+        ...question,
+        text: question.text.trim(),
+        explanation: (question.explanation ?? '').trim(),
+        answers: question.answers.map((a) => ({ ...a, text: a.text.trim(), ...(a.match !== undefined ? { match: a.match.trim() } : {}) })),
+      }),
+    ),
   };
 }

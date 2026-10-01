@@ -5,6 +5,7 @@ import './styles/base.css';
 import './styles/components.css';
 import './styles/pages.css';
 import './styles/game.css';
+import './styles/types.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

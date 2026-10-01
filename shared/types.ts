@@ -33,6 +33,27 @@ export interface AdminUserRow {
 export interface AnswerInput {
   text: string;
   isCorrect: boolean;
+  /** Association : élément à relier à `text`. */
+  match?: string;
+}
+
+export type MediaKind = 'image' | 'audio' | 'video';
+
+/** Média joint à une question (en plus de l'image principale `imageUrl`). */
+export interface MediaItem {
+  kind: MediaKind;
+  url: string;
+}
+
+/** Réglages propres à certains types (réponse numérique, curseur). */
+export interface QuestionConfig {
+  answer?: number;
+  /** Écart accepté autour de la réponse (0 = valeur exacte). */
+  tolerance?: number;
+  unit?: string;
+  min?: number;
+  max?: number;
+  step?: number;
 }
 
 export interface QuestionInput {
@@ -42,8 +63,18 @@ export interface QuestionInput {
   timeLimit: number;
   points: number;
   pointsEnabled: boolean;
-  /** Choix proposés (QCM, Vrai/Faux) ou réponses acceptées (texte). */
+  /**
+   * Choix proposés (QCM, Vrai/Faux, sondage), réponses acceptées (texte), éléments dans le bon ordre
+   * (ordre, classement) ou paires (association : `text` ↔ `match`).
+   */
   answers: AnswerInput[];
+  /** Explication affichée avec la correction. */
+  explanation?: string;
+  /** Question bonus : points doublés. */
+  bonus?: boolean;
+  /** Images supplémentaires, audio, vidéo. */
+  media?: MediaItem[];
+  config?: QuestionConfig;
 }
 
 export interface QuizInput {
@@ -100,7 +131,16 @@ export interface GameSettings {
 
 export type GamePhase = 'lobby' | 'ready' | 'question' | 'reveal' | 'ended';
 
-export type SubmittedAnswer = { kind: 'choice'; choices: number[] } | { kind: 'text'; text: string };
+/**
+ * Réponse envoyée par un élève. Les indices se rapportent à l'ordre affiché à l'élève (`PublicQuestion`),
+ * le serveur les reconvertit avant de corriger.
+ */
+export type SubmittedAnswer =
+  | { kind: 'choice'; choices: number[] }
+  | { kind: 'text'; text: string }
+  | { kind: 'number'; value: number }
+  | { kind: 'order'; order: number[] }
+  | { kind: 'match'; pairs: number[] };
 
 export interface PublicQuestion {
   index: number;
@@ -108,17 +148,23 @@ export interface PublicQuestion {
   type: QuestionType;
   text: string;
   imageUrl: string | null;
-  /** Textes des choix (vide pour une réponse texte). Jamais la bonne réponse. */
+  /** Choix, éléments à ordonner (mélangés) ou éléments de gauche d'une association. Jamais la bonne réponse. */
   choices: string[];
+  /** Association : éléments de droite, mélangés. */
+  options?: string[];
+  /** Curseur : bornes et pas. */
+  range?: { min: number; max: number; step: number };
+  unit?: string;
   timeLimit: number;
   points: number;
   pointsEnabled: boolean;
+  bonus?: boolean;
+  media?: MediaItem[];
+  /** Faux pour les sondages, nuages de mots et classements : pas de bonne réponse. */
+  scored?: boolean;
 }
 
-export interface HostQuestion extends PublicQuestion {
-  correctChoices: number[];
-  acceptedAnswers: string[];
-}
+export interface HostQuestion extends PublicQuestion, Correction {}
 
 export interface TimerState {
   /** Horodatage serveur de fin (null si en pause ou terminé). */
@@ -133,13 +179,32 @@ export interface TimerState {
 export interface Correction {
   correctChoices: number[];
   acceptedAnswers: string[];
+  /** Ordre : indices affichés, dans le bon ordre. */
+  correctOrder?: number[];
+  /** Association : pour chaque élément de gauche, l'indice de l'option de droite attendue. */
+  correctPairs?: number[];
+  /** Numérique / curseur. */
+  correctValue?: { answer: number; tolerance: number };
+  explanation?: string;
 }
 
 export interface QuestionOutcome {
   answered: boolean;
   correct: boolean;
   points: number;
+  /** Faux pour une question sans bonne réponse (sondage…). */
+  scored?: boolean;
+  /** Part de la réponse juste (ordre, association), de 0 à 1. */
+  ratio?: number;
 }
+
+/** Statistiques en direct d'une question, selon son type. */
+export type QuestionStats =
+  | { kind: 'choices'; counts: number[] }
+  | { kind: 'texts'; items: TextAnswerStat[] }
+  | { kind: 'numbers'; items: { value: number; count: number; correct: boolean }[]; average: number | null }
+  | { kind: 'order'; averagePositions: (number | null)[]; correctRates: number[] }
+  | { kind: 'match'; correctRates: number[] };
 
 export interface LeaderboardEntry {
   playerId: string;
@@ -203,6 +268,7 @@ export interface HostView {
   distribution: number[] | null;
   textAnswers: TextAnswerStat[] | null;
   correctCount: number | null;
+  stats: QuestionStats | null;
   answersVisible: boolean;
   leaderboardVisible: boolean;
   resultsVisible: boolean;
@@ -278,6 +344,8 @@ export interface QuestionStat {
   index: number;
   text: string;
   type: QuestionType;
+  /** Faux pour une question sans bonne réponse (exclue du taux de réussite). */
+  scored: boolean;
   answeredCount: number;
   correctCount: number;
   successRate: number;

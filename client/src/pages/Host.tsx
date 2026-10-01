@@ -12,9 +12,9 @@ import { QrCode } from '../components/QrCode';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
-import { ChoiceTile } from '../game/ChoiceTile';
 import { Leaderboard, Podium } from '../game/Leaderboard';
 import { QuestionMeta, QuestionStatement } from '../game/QuestionView';
+import { Explanation, HostQuestionBody, HostReveal } from '../questionTypes/results';
 import { Timer } from '../game/Timer';
 import { useHostGame, type FloatingReaction } from '../game/useHostGame';
 import { readStorage, writeStorage } from '../lib/storage';
@@ -465,7 +465,7 @@ function ReadyPhase({ view, act, busy }: PhaseProps) {
   return (
     <div className="host-phase animate-in" key={`ready-${question.index}`}>
       <QuestionMeta question={question} />
-      <QuestionStatement text={question.text} imageUrl={question.imageUrl} large />
+      <QuestionStatement text={question.text} imageUrl={question.imageUrl} media={question.media} large />
       <p className="host-hint">
         <Icon name="clock" size={18} /> {question.timeLimit} secondes · les élèves voient l’énoncé et attendent votre signal
         {view.settings.autoAdvance && ' (lancement automatique)'}
@@ -504,18 +504,8 @@ function QuestionPhase({ view, act, busy, clockOffset }: PhaseProps) {
         </div>
         <Timer timer={view.timer} offset={clockOffset} size={92} />
       </div>
-      <QuestionStatement text={question.text} imageUrl={question.imageUrl} large />
-      {question.type === 'text' ? (
-        <p className="host-hint">
-          <Icon name="text" size={18} /> Les élèves saisissent leur réponse.
-        </p>
-      ) : (
-        <div className={`choices choices-${question.choices.length}${question.type === 'truefalse' ? ' choices-tf' : ''}`}>
-          {question.choices.map((choice, index) => (
-            <ChoiceTile key={index} index={index} text={choice} />
-          ))}
-        </div>
-      )}
+      <QuestionStatement text={question.text} imageUrl={question.imageUrl} media={question.media} large />
+      <HostQuestionBody question={question} />
       {paused && (
         <div className="paused-overlay" role="status">
           <Icon name="pause" size={32} /> Partie en pause
@@ -549,29 +539,21 @@ function RevealPhase({ view, act, busy }: PhaseProps) {
       <div className="host-question-top">
         <QuestionMeta question={question} />
         <span className="spacer" />
-        <span className="badge badge-success">
-          {formatPercent(view.players.length ? (view.correctCount ?? 0) / view.players.length : 0)} de bonnes réponses
-        </span>
+        {view.correctCount !== null ? (
+          <span className="badge badge-success">
+            {formatPercent(view.players.length ? view.correctCount / view.players.length : 0)} de bonnes réponses
+          </span>
+        ) : (
+          <span className="badge">
+            {answered} réponse{answered > 1 ? 's' : ''}
+          </span>
+        )}
       </div>
       <div className={`reveal-layout${view.leaderboardVisible ? ' with-board' : ''}`}>
         <div className="stack">
           <p className="reveal-question-host">{question.text}</p>
-          {question.type === 'text' ? (
-            <TextAnswers view={view} />
-          ) : (
-            <div className={`choices choices-${question.choices.length} choices-compact`}>
-              {question.choices.map((choice, index) => (
-                <ChoiceTile
-                  key={index}
-                  index={index}
-                  text={choice}
-                  state={question.correctChoices.includes(index) ? 'correct' : 'dimmed'}
-                  count={view.distribution?.[index] ?? 0}
-                  total={answered}
-                />
-              ))}
-            </div>
-          )}
+          <HostReveal view={view} />
+          {view.answersVisible && <Explanation text={question.explanation} />}
         </div>
         {view.leaderboardVisible && (
           <aside className="board-panel animate-in" aria-label="Classement">
@@ -607,29 +589,6 @@ function RevealPhase({ view, act, busy }: PhaseProps) {
           {isLast ? 'Voir les résultats' : 'Question suivante'}
         </Button>
       </ControlBar>
-    </div>
-  );
-}
-
-function TextAnswers({ view }: { view: HostView }) {
-  const question = view.question!;
-  return (
-    <div className="text-answers">
-      <p>
-        Réponse attendue : <b>{question.acceptedAnswers.join(' / ')}</b>
-      </p>
-      {view.textAnswers && view.textAnswers.length > 0 ? (
-        <ul>
-          {view.textAnswers.map((answer) => (
-            <li key={answer.text} className={answer.correct ? 'correct' : undefined}>
-              <span>{answer.text}</span>
-              <b>{answer.count}</b>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="muted-inverse">Aucune réponse.</p>
-      )}
     </div>
   );
 }

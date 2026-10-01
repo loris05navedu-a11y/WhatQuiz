@@ -1,4 +1,4 @@
-import type { Question, QuestionType, Quiz, QuizInput, QuizSummary } from '../../../shared/types';
+import type { MediaItem, Question, QuestionConfig, QuestionInput, QuestionType, Quiz, QuizInput, QuizSummary } from '../../../shared/types';
 import type { Database } from './database';
 
 interface QuizRow {
@@ -26,12 +26,40 @@ interface QuestionRow {
   time_limit: number;
   points: number;
   points_enabled: number;
+  extra: string;
 }
 
 interface AnswerRow {
   question_id: number;
   text: string;
   is_correct: number;
+  match_text: string | null;
+}
+
+/** Champs propres aux types récents, stockés en JSON dans `questions.extra`. */
+interface QuestionExtra {
+  explanation?: string;
+  bonus?: boolean;
+  media?: MediaItem[];
+  config?: QuestionConfig;
+}
+
+function readExtra(raw: string): QuestionExtra {
+  try {
+    const value = JSON.parse(raw) as unknown;
+    return value && typeof value === 'object' ? (value as QuestionExtra) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeExtra(question: QuestionInput): string {
+  const extra: QuestionExtra = {};
+  if (question.explanation) extra.explanation = question.explanation;
+  if (question.bonus) extra.bonus = true;
+  if (question.media?.length) extra.media = question.media;
+  if (question.config) extra.config = question.config;
+  return JSON.stringify(extra);
 }
 
 export class QuizRepository {
@@ -67,23 +95,30 @@ export class QuizRepository {
     if (!row) return undefined;
     const questionRows = this.db.all<QuestionRow>('SELECT * FROM questions WHERE quiz_id = ? ORDER BY position', id);
     const answerRows = this.db.all<AnswerRow>(
-      `SELECT a.question_id, a.text, a.is_correct FROM answers a
+      `SELECT a.question_id, a.text, a.is_correct, a.match_text FROM answers a
        JOIN questions q ON q.id = a.question_id WHERE q.quiz_id = ? ORDER BY a.question_id, a.position`,
       id,
     );
-    const questions: Question[] = questionRows.map((q) => ({
-      id: q.id,
-      position: q.position,
-      type: q.type,
-      text: q.text,
-      imageUrl: q.image_url,
-      timeLimit: q.time_limit,
-      points: q.points,
-      pointsEnabled: q.points_enabled === 1,
-      answers: answerRows
-        .filter((a) => a.question_id === q.id)
-        .map((a) => ({ text: a.text, isCorrect: a.is_correct === 1 })),
-    }));
+    const questions: Question[] = questionRows.map((q) => {
+      const extra = readExtra(q.extra);
+      return {
+        id: q.id,
+        position: q.position,
+        type: q.type,
+        text: q.text,
+        imageUrl: q.image_url,
+        timeLimit: q.time_limit,
+        points: q.points,
+        pointsEnabled: q.points_enabled === 1,
+        answers: answerRows
+          .filter((a) => a.question_id === q.id)
+          .map((a) => (a.match_text === null ? { text: a.text, isCorrect: a.is_correct === 1 } : { text: a.text, isCorrect: a.is_correct === 1, match: a.match_text })),
+        explanation: extra.explanation ?? '',
+        bonus: extra.bonus ?? false,
+        media: extra.media ?? [],
+        ...(extra.config ? { config: extra.config } : {}),
+      };
+    });
     return {
       id: row.id,
       ownerId: row.owner_id,
@@ -138,8 +173,8 @@ export class QuizRepository {
   private insertQuestions(quizId: number, input: QuizInput): void {
     input.questions.forEach((question, position) => {
       const { lastInsertRowid: questionId } = this.db.run(
-        `INSERT INTO questions (quiz_id, position, type, text, image_url, time_limit, points, points_enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO questions (quiz_id, position, type, text, image_url, time_limit, points, points_enabled, extra)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         quizId,
         position,
         question.type,
@@ -148,14 +183,16 @@ export class QuizRepository {
         question.timeLimit,
         question.points,
         question.pointsEnabled ? 1 : 0,
+        writeExtra(question),
       );
       question.answers.forEach((answer, answerPosition) => {
         this.db.run(
-          'INSERT INTO answers (question_id, position, text, is_correct) VALUES (?, ?, ?, ?)',
+          'INSERT INTO answers (question_id, position, text, is_correct, match_text) VALUES (?, ?, ?, ?, ?)',
           questionId,
           answerPosition,
           answer.text,
           answer.isCorrect ? 1 : 0,
+          answer.match ?? null,
         );
       });
     });

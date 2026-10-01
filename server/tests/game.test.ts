@@ -143,7 +143,7 @@ describe('partie en direct', () => {
     const revealed = nextEvent(alice, 'game:state', (view) => view.phase === 'reveal');
     assert.deepEqual(await emitAck(bob, 'game:answer', { questionIndex: 0, answer: { kind: 'choice', choices: [0] } }), { ok: true });
     const view = await revealed;
-    assert.deepEqual(view.outcome, { answered: true, correct: true, points: 1000 });
+    assert.deepEqual(view.outcome, { answered: true, correct: true, points: 1000, scored: true, ratio: 1 });
     assert.deepEqual(view.correction?.correctChoices, [1]);
     assert.equal(view.me.score, 1000);
 
