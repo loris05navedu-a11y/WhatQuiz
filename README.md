@@ -638,15 +638,27 @@ passe** ouvrent le compte sur le site et dans l'application, sur n'importe quel 
   reste allumé (APK 1.2.1) ; gardez l'application ouverte, la partie tourne sur cet appareil.
 
 **À faire une fois dans la console Firebase** (sinon la pastille indique « règles Firestore non publiées ») :
-console.firebase.google.com → projet *furioustube-9d498* → **Firestore Database** → onglet **Règles** → **ajouter**
-le bloc ci-dessous juste avant l'avant-dernière accolade `}` (à l'intérieur de `match /databases/{database}/documents`),
-sans toucher aux règles de Furious-Tube → **Publier**. Le fichier complet est `firestore.rules` du dépôt Furious-Tube.
-Ces règles réservent les données `whatquiz/{uid}` à leur propriétaire : personne d'autre, ni un autre compte ni un
-visiteur, ne peut les lire ou les modifier.
+console.firebase.google.com → projet *furioustube-9d498* → **Firestore Database** → onglet **Règles** → copie-colle
+le bloc ci-dessous en entier (il remplace tout le contenu actuel) → **Publier**. Ces règles réservent les données
+`whatquiz/{uid}` à leur propriétaire : personne d'autre, ni un autre compte ni un visiteur, ne peut les lire ou les
+modifier. Elles gardent aussi la règle publique pour le fil de vidéos Furious-Tube.
 
 ```
-match /whatquiz/{uid}/{document=**} {
-  allow read, write: if request.auth != null && request.auth.uid == uid;
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Lecture publique (le fil de vidéos est visible sans compte), écriture réservée aux comptes connectés
+    match /bins/{binId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // WhatQuiz : sauvegarde des comptes (quiz, parties, banque, historique, fichiers), synchronisée entre le site
+    // et l'application Android. Chaque compte ne lit et n'écrit que ses propres données.
+    match /whatquiz/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
 }
 ```
 
