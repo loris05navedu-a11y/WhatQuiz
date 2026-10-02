@@ -2,7 +2,43 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { PublicUser, Role } from '../../../shared/types';
 import { ApiError } from '../api/errors';
 import { authApi } from '../api/endpoints';
-import { FIREBASE_ACCOUNTS, signInWithFuriousTube, signInWithGoogle, type FirebaseProfile } from '../lib/firebaseAccount';
+import {
+  connectOnlineAccount,
+  createOnlineAccount,
+  FIREBASE_ACCOUNTS,
+  signInWithFuriousTube,
+  signInWithGoogle,
+  type FirebaseProfile,
+} from '../lib/firebaseAccount';
+import { reportCloudProblem } from '../standalone/cloudStatus';
+
+/** Rôle et nom enregistrés en ligne (compte ouvert pour la première fois sur cet appareil). */
+async function cloudProfile(uid: string) {
+  const { readCloudProfile } = await import('../standalone/cloud');
+  return readCloudProfile(uid);
+}
+
+/**
+ * Compte de cet appareil ouvert avec son mot de passe : on le relie au compte en ligne (mêmes identifiants),
+ * créé au besoin, pour que la sauvegarde suive sur le site et dans l'application. Sans Internet, rien ne bloque.
+ */
+async function linkOnline(user: PublicUser, email: string, password: string): Promise<void> {
+  if (!FIREBASE_ACCOUNTS || user.isDemo) return;
+  try {
+    const { uid } = await authApi.cloud();
+    const profile = await connectOnlineAccount(email, password, user.displayName);
+    if (!profile) {
+      reportCloudProblem('Sauvegarde en ligne impossible : cette adresse est déjà utilisée par un compte en ligne (Furious-Tube) avec un autre mot de passe. Connectez-vous avec ce mot de passe-là.');
+      return;
+    }
+    if (uid === profile.uid) {
+      const { resumeCloudSync } = await import('../standalone/cloud');
+      resumeCloudSync();
+    } else await authApi.linkCloud(profile.uid);
+  } catch {
+    // Hors ligne : la liaison se fera à la prochaine connexion.
+  }
+}
 
 interface AuthApi {
   user: PublicUser | null;
@@ -42,22 +78,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loading,
-      // Compte WhatQuiz de cet appareil, sinon compte Furious-Tube avec les mêmes identifiants.
+      // Compte de cet appareil, sinon compte en ligne (créé sur le site, dans l'application ou sur Furious-Tube).
       login: async (email, password) => {
         try {
-          return await withUser(authApi.login(email, password));
+          const local = await withUser(authApi.login(email, password));
+          void linkOnline(local, email, password);
+          return local;
         } catch (error) {
           if (!FIREBASE_ACCOUNTS || !(error instanceof ApiError) || error.status !== 401) throw error;
           const profile = await signInWithFuriousTube(email, password).catch((firebaseError: unknown) => {
             throw firebaseError instanceof ApiError && firebaseError.status !== 401 ? firebaseError : error;
           });
-          return withUser(authApi.firebase(profile, 'teacher'));
+          const saved = await cloudProfile(profile.uid);
+          return withUser(authApi.firebase({ ...profile, displayName: saved?.displayName ?? profile.displayName }, saved?.role ?? 'teacher', password));
         }
       },
-      register: (input) => withUser(authApi.register(input)),
+      // Le compte est créé en ligne : les mêmes identifiants l'ouvrent sur le site et dans l'application.
+      register: async (input) => {
+        if (!FIREBASE_ACCOUNTS) return withUser(authApi.register(input));
+        let profile: FirebaseProfile;
+        try {
+          profile = await createOnlineAccount(input.email, input.password, input.displayName);
+        } catch (error) {
+          // Sans Internet, le compte est créé sur l'appareil ; il sera relié en ligne à la prochaine connexion.
+          if (error instanceof ApiError && error.status === 0) return withUser(authApi.register(input));
+          throw error;
+        }
+        return withUser(authApi.firebase({ ...profile, displayName: input.displayName }, input.role, input.password));
+      },
       startDemo: () => withUser(authApi.demo()),
-      loginWithGoogle: async (role) => withUser(authApi.firebase(await signInWithGoogle(), role)),
-      continueWithFuriousTube: (profile) => withUser(authApi.firebase(profile, 'teacher')),
+      loginWithGoogle: async (role) => {
+        const profile = await signInWithGoogle();
+        const saved = await cloudProfile(profile.uid);
+        return withUser(authApi.firebase({ ...profile, displayName: saved?.displayName ?? profile.displayName }, saved?.role ?? role));
+      },
+      continueWithFuriousTube: async (profile) => {
+        const saved = await cloudProfile(profile.uid);
+        return withUser(authApi.firebase({ ...profile, displayName: saved?.displayName ?? profile.displayName }, saved?.role ?? 'teacher'));
+      },
       logout: async () => {
         // La session Furious-Tube (autre site) reste ouverte : seule celle de WhatQuiz est fermée.
         await authApi.logout().catch(() => undefined);

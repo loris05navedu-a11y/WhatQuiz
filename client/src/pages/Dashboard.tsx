@@ -17,6 +17,7 @@ import { formatDateTime, formatNumber, formatPercent, formatRelative, plural } f
 import { exportQuiz, importQuizFile } from '../lib/quizTransfer';
 import { useTestLauncher } from '../lib/useTestLauncher';
 import { MediaImg } from '../components/Media';
+import { useSyncRefresh } from '../lib/useSyncRefresh';
 
 type SortKey = 'updated' | 'title' | 'games';
 
@@ -62,6 +63,7 @@ export function DashboardPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  useSyncRefresh(load);
 
   const categories = useMemo(() => [...new Set((quizzes ?? []).map((q) => q.category).filter(Boolean))].sort(), [quizzes]);
 

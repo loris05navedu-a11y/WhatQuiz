@@ -81,7 +81,7 @@ type Tables = {
   history: Map<string, LocalHistory>;
   doc: Map<string, LocalDoc>;
 };
-type Kind = keyof Tables;
+export type Kind = keyof Tables;
 
 export interface LocalData {
   users: Map<number, LocalUser>;
@@ -191,10 +191,33 @@ export function requireData(): LocalData {
   return data;
 }
 
+/** Prévenu de chaque modification locale (synchronisation en ligne). */
+type DirtyListener = (kind: Kind, id: string | number) => void;
+let dirtyListener: DirtyListener | null = null;
+let applyingRemote = false;
+
+export function setDirtyListener(listener: DirtyListener | null): void {
+  dirtyListener = listener;
+}
+
 export function markDirty(kind: Kind, id: string | number): void {
   dirty.add(`${kind}:${id}`);
   if (saveTimer === null) saveTimer = setTimeout(() => void flush(), SAVE_DELAY_MS);
+  if (!applyingRemote) dirtyListener?.(kind, id);
 }
+
+/** Applique des changements venus d'un autre appareil : enregistrés ici, sans être renvoyés en ligne. */
+export function applyRemote(work: (d: LocalData) => void): void {
+  applyingRemote = true;
+  try {
+    work(requireData());
+  } finally {
+    applyingRemote = false;
+  }
+}
+
+/** La partie est en cours sur cet appareil (sa version en mémoire fait foi). */
+export const isHostedHere = (gameId: string) => hostedHere.has(gameId);
 
 export async function flush(): Promise<void> {
   if (saveTimer !== null) clearTimeout(saveTimer);
@@ -232,6 +255,22 @@ if (typeof window !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') void flush();
   });
+}
+
+/**
+ * Numéros de quiz uniques entre appareils (un compte synchronisé réunit les quiz du site et de l'application).
+ * Les quiz plus anciens (1, 2, 3…) sont renumérotés à la première synchronisation.
+ */
+const GLOBAL_QUIZ_ID_MIN = 100_000_000;
+const GLOBAL_QUIZ_ID_MAX = 2_147_000_000;
+
+export const isGlobalQuizId = (id: number) => id >= GLOBAL_QUIZ_ID_MIN;
+
+export function newGlobalQuizId(used: Map<number, unknown>): number {
+  for (;;) {
+    const id = GLOBAL_QUIZ_ID_MIN + Math.floor(Math.random() * (GLOBAL_QUIZ_ID_MAX - GLOBAL_QUIZ_ID_MIN));
+    if (!used.has(id)) return id;
+  }
 }
 
 export function nextNumericId(map: Map<number, unknown>): number {

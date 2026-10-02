@@ -38,6 +38,7 @@ import {
   flush,
   loadData,
   markDirty,
+  newGlobalQuizId,
   nextNumericId,
   nowIso,
   sessionUser,
@@ -74,7 +75,24 @@ const firebaseSchema = z.object({
   emailVerified: z.boolean().default(false),
   displayName: z.string().trim().max(60),
   role: z.enum(['teacher', 'student']).default('teacher'),
+  /** Mot de passe saisi (connexion par e-mail) : gardé aussi sur l'appareil, pour se connecter hors ligne. */
+  password: z.string().min(1).max(200).optional(),
 });
+
+/** Synchronisation en ligne du compte ouvert (chargée seulement pour un compte relié). */
+let cloudModule: Promise<typeof import('./cloud')> | null = null;
+
+function startSync(user: LocalUser): void {
+  // Navigateur uniquement (les tests de l'API locale tournent sans Firebase).
+  if (!user.firebaseUid || user.isDemo || typeof window === 'undefined') return;
+  const uid = user.firebaseUid;
+  cloudModule ??= import('./cloud');
+  void cloudModule.then(({ startCloudSync }) => startCloudSync(user.id, uid)).catch(() => undefined);
+}
+
+function stopSync(): void {
+  void cloudModule?.then(({ stopCloudSync }) => stopCloudSync()).catch(() => undefined);
+}
 
 const notFound = (message: string = ERRORS.notFound) => new ApiError(404, message);
 const forbidden = () => new ApiError(403, ERRORS.forbidden);
@@ -184,7 +202,7 @@ function accessCodeFor(d: LocalData, input: QuizInput, current: string | null): 
 function createQuiz(d: LocalData, ownerId: number, input: QuizInput): LocalQuiz {
   const now = nowIso();
   const quiz: LocalQuiz = {
-    id: nextNumericId(d.quizzes),
+    id: newGlobalQuizId(d.quizzes),
     ownerId,
     title: input.title,
     description: input.description,
@@ -386,7 +404,31 @@ async function checkCode(code: string): Promise<{ code: string; quizTitle: strin
 /* ───────────── Routes ───────────── */
 
 const routes: [HttpMethod, RegExp, Handler][] = [
-  ['GET', /^\/auth\/me$/, ({ user }) => ({ user: user ? toPublicUser(user) : null })],
+  [
+    'GET',
+    /^\/auth\/me$/,
+    ({ user }) => {
+      if (user) startSync(user);
+      return { user: user ? toPublicUser(user) : null };
+    },
+  ],
+  /** Compte en ligne relié au compte ouvert sur cet appareil (null : compte local seulement). */
+  ['GET', /^\/auth\/cloud$/, (ctx) => ({ uid: requireAuth(ctx).firebaseUid ?? null })],
+  [
+    'POST',
+    /^\/auth\/link$/,
+    (ctx) => {
+      const user = requireAuth(ctx);
+      const uid = z.object({ uid: z.string().min(1).max(128) }).parse(ctx.body).uid;
+      if (user.isDemo) throw new ApiError(403, 'Le compte démo n’est pas sauvegardé en ligne');
+      const other = [...ctx.d.users.values()].find((u) => u.id !== user.id && u.firebaseUid === uid);
+      if (other) throw new ApiError(409, 'Ce compte en ligne est déjà relié à un autre compte de cet appareil');
+      user.firebaseUid = uid;
+      markDirty('user', user.id);
+      startSync(user);
+      return { user: toPublicUser(user) };
+    },
+  ],
   [
     'POST',
     /^\/auth\/register$/,
@@ -409,19 +451,22 @@ const routes: [HttpMethod, RegExp, Handler][] = [
         throw new ApiError(401, 'E-mail ou mot de passe incorrect');
       }
       setSession(user.id);
+      startSync(user);
       return { user: toPublicUser(user) };
     },
   ],
   [
     'POST',
     /^\/auth\/firebase$/,
-    (ctx) => {
+    async (ctx) => {
       const input = firebaseSchema.parse(ctx.body);
       let user = [...ctx.d.users.values()].find((u) => u.firebaseUid === input.uid || u.googleUid === input.uid);
       if (!user) {
         const sameEmail = findByEmail(ctx.d, input.email);
         // Relier par e-mail seulement si Firebase a vérifié l'adresse : sinon n'importe qui pourrait prendre ce compte.
-        if (sameEmail && !input.emailVerified) {
+        // Même adresse et même mot de passe que le compte de l'appareil : c'est bien la même personne.
+        const provenSame = sameEmail && input.password && sameEmail.passwordHash ? await verifyPassword(input.password, sameEmail.passwordHash) : false;
+        if (sameEmail && !input.emailVerified && !provenSame) {
           throw new ApiError(409, 'Un compte WhatQuiz existe déjà avec cette adresse sur cet appareil : connectez-vous avec son mot de passe');
         }
         if (sameEmail) {
@@ -438,7 +483,12 @@ const routes: [HttpMethod, RegExp, Handler][] = [
         passwordHash: '',
         firebaseUid: input.uid,
       });
+      if (input.password && !user.passwordHash) {
+        user.passwordHash = await hashPassword(input.password);
+        markDirty('user', user.id);
+      }
       setSession(user.id);
+      startSync(user);
       return { user: toPublicUser(user) };
     },
   ],
@@ -446,6 +496,7 @@ const routes: [HttpMethod, RegExp, Handler][] = [
     'POST',
     /^\/auth\/logout$/,
     () => {
+      stopSync();
       setSession(null);
       return { ok: true };
     },
@@ -475,6 +526,9 @@ const routes: [HttpMethod, RegExp, Handler][] = [
       const user = requireAuth(ctx);
       const input = profileSchema.parse(ctx.body);
       if (user.isDemo) throw new ApiError(403, 'Le profil du compte démo ne peut pas être modifié');
+      if (user.firebaseUid && input.email.toLowerCase() !== user.email.toLowerCase()) {
+        throw new ApiError(400, 'L’adresse d’un compte sauvegardé en ligne ne peut pas être changée ici');
+      }
       const existing = findByEmail(ctx.d, input.email);
       if (existing && existing.id !== user.id) throw new ApiError(409, 'Un compte existe déjà avec cette adresse sur cet appareil');
       user.email = input.email;
@@ -502,8 +556,17 @@ const routes: [HttpMethod, RegExp, Handler][] = [
   [
     'DELETE',
     /^\/account$/,
-    (ctx) => {
-      deleteUser(ctx.d, requireAuth(ctx).id);
+    async (ctx) => {
+      const user = requireAuth(ctx);
+      if (user.firebaseUid) {
+        const { stopCloudSync, wipeCloudData } = await import('./cloud');
+        stopCloudSync();
+        // Les données en ligne du compte sont effacées aussi (le compte Firebase/Furious-Tube lui-même est conservé).
+        await wipeCloudData(user.firebaseUid).catch(() => {
+          throw new ApiError(503, 'Connexion Internet requise pour supprimer aussi la sauvegarde en ligne');
+        });
+      }
+      deleteUser(ctx.d, user.id);
       setSession(null);
       return { ok: true };
     },

@@ -417,3 +417,66 @@ button.quiz-card-cover {
 .library-questions .badge {
   margin-right: 4px;
 }
+
+/* ───────────── Sauvegarde en ligne (barre du haut) ───────────── */
+.cloud-status {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.cloud-status:hover {
+  background: var(--surface-2);
+}
+
+.cloud-status-dot {
+  position: absolute;
+  right: 7px;
+  bottom: 8px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--text-muted);
+}
+
+.cloud-status.is-ok .cloud-status-dot {
+  background: var(--success);
+}
+
+.cloud-status.is-warn .cloud-status-dot {
+  background: var(--warning);
+}
+
+.cloud-status.is-busy .cloud-status-dot {
+  background: var(--brand);
+  animation: cloud-pulse 1s ease-in-out infinite;
+}
+
+.cloud-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cloud-state.is-synced {
+  color: var(--success);
+}
+
+.cloud-state.is-error,
+.cloud-state.is-off {
+  color: var(--warning);
+}
+
+@keyframes cloud-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}

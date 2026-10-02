@@ -224,6 +224,15 @@ public class MainActivity extends Activity {
             return MainActivity.this.isInMultiWindowMode();
         }
 
+        /** Le professeur anime une partie depuis l'application : l'écran reste allumé (la partie tourne sur cet appareil). */
+        @JavascriptInterface
+        public void keepAwake(boolean on) {
+            runOnUiThread(() -> {
+                if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            });
+        }
+
         /** Partie surveillée en cours : écran toujours allumé (pas de fausse sortie par mise en veille) et captures bloquées. */
         @JavascriptInterface
         public void gameMode(boolean on) {

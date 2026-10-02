@@ -8,6 +8,7 @@ import { EmptyState } from '../components/EmptyState';
 import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
 import { formatDateTime, formatPercent, plural } from '../lib/format';
+import { useSyncRefresh } from '../lib/useSyncRefresh';
 
 export function HistoryPage() {
   const toast = useToast();
@@ -26,6 +27,7 @@ export function HistoryPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  useSyncRefresh(load);
 
   const remove = async (game: GameSummary) => {
     const ok = await confirm({ title: 'Supprimer cette partie de l’historique ?', message: 'Ses résultats seront définitivement effacés.', confirmLabel: 'Supprimer', danger: true });

@@ -14,6 +14,8 @@ export interface AndroidBridge {
   isInMultiWindow?(): boolean;
   /** Partie surveillée : écran toujours allumé et captures d'écran bloquées. */
   gameMode?(on: boolean): void;
+  /** Le professeur anime une partie depuis l'application : écran toujours allumé (APK 1.2.1+). */
+  keepAwake?(on: boolean): void;
 }
 
 declare global {
@@ -57,3 +59,4 @@ export const androidIsPinned = (): boolean | undefined => call((b) => (typeof b.
 export const androidInMultiWindow = (): boolean => call((b) => (typeof b.isInMultiWindow === 'function' ? b.isInMultiWindow() : undefined)) ?? false;
 export const androidCanPin = (): boolean => call((b) => typeof b.pin === 'function') ?? false;
 export const androidGameMode = (on: boolean): void => void call((b) => (typeof b.gameMode === 'function' ? b.gameMode(on) : undefined));
+export const androidKeepAwake = (on: boolean): void => void call((b) => (typeof b.keepAwake === 'function' ? b.keepAwake(on) : undefined));

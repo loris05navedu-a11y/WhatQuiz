@@ -1,4 +1,5 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useSyncRefresh } from '../lib/useSyncRefresh';
 import { useNavigate } from 'react-router';
 import type { StudentHistoryEntry } from '../../../shared/types';
 import { accountApi } from '../api/endpoints';
@@ -12,12 +13,18 @@ export function StudentHomePage() {
   const navigate = useNavigate();
   const [history, setHistory] = useState<StudentHistoryEntry[]>([]);
 
+  const load = useCallback(
+    () =>
+      accountApi
+        .history()
+        .then(({ history: entries }) => setHistory(entries))
+        .catch(() => setHistory([])),
+    [],
+  );
   useEffect(() => {
-    accountApi
-      .history()
-      .then(({ history: entries }) => setHistory(entries))
-      .catch(() => setHistory([]));
-  }, []);
+    void load();
+  }, [load]);
+  useSyncRefresh(load);
 
   return (
     <div className="stack" style={{ maxWidth: 720, margin: '0 auto', '--gap': '24px' } as CSSProperties}>

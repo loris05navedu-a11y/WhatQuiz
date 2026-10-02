@@ -6,6 +6,7 @@ import { Icon, type IconName } from './Icon';
 import { Logo } from './Logo';
 import { Menu } from './Menu';
 import { ThemeToggle } from './ThemeToggle';
+import { CloudStatusButton } from './CloudStatus';
 import { FURIOUS_TUBE_URL } from '../lib/backend';
 
 /** Lien de navigation : le libellé disparaît sur les écrans moyens (l'icône et l'infobulle restent). */
@@ -55,6 +56,7 @@ export function AppShell() {
           <LinkButton to="/join" variant="soft" size="sm" icon="play" className={`hide-tablet${isTeacher ? ' topbar-join' : ''}`}>
             Rejoindre
           </LinkButton>
+          <CloudStatusButton />
           <ThemeToggle />
           <Menu
             trigger={(props) => (

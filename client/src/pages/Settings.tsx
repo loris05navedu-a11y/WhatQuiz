@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { LIMITS } from '../../../shared/constants';
 import { errorMessage } from '../api/client';
-import { accountApi } from '../api/endpoints';
+import { accountApi, authApi } from '../api/endpoints';
 import { Button } from '../components/Button';
 import { Segmented, TextField } from '../components/Form';
 import { useAuth } from '../context/AuthContext';
@@ -10,6 +10,8 @@ import { useConfirm } from '../context/ConfirmContext';
 import { useTheme, type ThemePreference } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import { formatDate } from '../lib/format';
+import { changeOnlinePassword } from '../lib/firebaseAccount';
+import { STANDALONE } from '../lib/backend';
 
 export function SettingsPage() {
   const { user } = useAuth();
@@ -80,6 +82,12 @@ function PasswordForm() {
     setSaving(true);
     try {
       await accountApi.changePassword(current, next);
+      // Compte sauvegardé en ligne : le nouveau mot de passe vaut aussi sur les autres appareils (site et application).
+      if (STANDALONE && (await authApi.cloud()).uid) {
+        await changeOnlinePassword(current, next).catch((error: unknown) =>
+          toast.error(`Mot de passe changé sur cet appareil, mais pas en ligne : ${errorMessage(error)}`),
+        );
+      }
       setCurrent('');
       setNext('');
       toast.success('Mot de passe modifié. Vos autres sessions ont été déconnectées.');

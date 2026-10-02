@@ -21,6 +21,7 @@ import { PresenceAlertStack, PresenceChip, PresencePanel, useHostNow, usePresenc
 import { PRESENCE_REASON_LABELS, PRESENCE_STATE_LABELS } from '../../../shared/presence';
 import { readStorage, writeStorage } from '../lib/storage';
 import { SEPARATE_BACKEND, siteOrigin, STANDALONE } from '../lib/backend';
+import { androidKeepAwake } from '../lib/android';
 import { formatNumber, formatPercent } from '../lib/format';
 
 type Act = (action: HostAction) => Promise<void>;
@@ -112,6 +113,8 @@ function useKeepHostAlive(active: boolean) {
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warn);
+    // Application Android : l'écran reste allumé tant que la partie tourne sur cet appareil.
+    androidKeepAwake(true);
     let lock: WakeLockSentinel | null = null;
     let released = false;
     const acquire = () => {
@@ -131,6 +134,7 @@ function useKeepHostAlive(active: boolean) {
       window.removeEventListener('beforeunload', warn);
       document.removeEventListener('visibilitychange', acquire);
       void lock?.release().catch(() => undefined);
+      androidKeepAwake(false);
     };
   }, [active]);
 }

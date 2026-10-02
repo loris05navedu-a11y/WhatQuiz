@@ -591,8 +591,9 @@ pour les liens profonds (`/join`, `/dashboard`…) et le publie.
           └──── mise en relation : serveur public PeerJS ────┘
 ```
 
-- **Comptes et quiz** sont enregistrés dans le navigateur (IndexedDB) de l'appareil où ils ont été créés.
-  Pour passer un quiz sur un autre appareil : *Exporter* puis *Importer* (fichier `.whatquiz.json`).
+- **Comptes et quiz sont sauvegardés en ligne et synchronisés** entre le site et l'application Android (voir
+  « Sauvegarde en ligne des comptes » ci-dessous) : mêmes identifiants partout, mêmes quiz, résultats, banque de
+  questions et historique. Ils restent aussi dans le navigateur (IndexedDB), donc utilisables hors ligne.
 - **La partie tourne dans l'onglet du professeur** : c'est lui qui fait autorité (minuteur, score, bonnes
   réponses, qui ne quittent jamais son appareil). **Gardez cette page ouverte** pendant la partie :
   la fermer ou la recharger met fin à la partie. L'écran reste allumé automatiquement quand le navigateur le permet.
@@ -612,8 +613,44 @@ pour les liens profonds (`/join`, `/dashboard`…) et le publie.
     cette connexion dans les WebView : ce bouton n'est pas proposé dans l'APK Android.
 
   Firebase vérifie l'identité ; WhatQuiz ouvre ensuite le compte de cet appareil, créé au besoin. Il n'est relié à un
-  compte WhatQuiz existant de même adresse que si Firebase a vérifié cette adresse. Les quiz restent sur l'appareil.
+  compte WhatQuiz existant de même adresse que si Firebase a vérifié cette adresse (ou si le mot de passe est le même).
   Se déconnecter de WhatQuiz ne ferme pas la session Furious-Tube. Code : `client/src/lib/firebaseAccount.ts`.
+
+#### Sauvegarde en ligne des comptes (site ↔ application Android)
+
+Tout compte WhatQuiz (hors compte démo) est un compte en ligne Firebase : **la même adresse et le même mot de
+passe** ouvrent le compte sur le site et dans l'application, sur n'importe quel appareil.
+
+- **Synchronisé en direct** (Firestore, offre gratuite du projet Firebase de Furious-Tube) : quiz (et leurs images,
+  sons, vidéos), parties terminées et leurs résultats, banque de questions, versions des quiz, historique des élèves,
+  nom et rôle. Une modification faite dans l'application apparaît sur le site en une seconde environ, et inversement.
+- **Hors ligne** : tout continue de fonctionner sur l'appareil ; les modifications partent au retour d'Internet.
+  Conflit : la modification la plus récente l'emporte, enregistrement par enregistrement.
+- **Comptes créés avant cette version** (enregistrés sur un seul appareil) : ils passent en ligne automatiquement à
+  la prochaine connexion avec leur mot de passe, et leurs quiz sont envoyés. Si l'adresse appartient déjà à un compte
+  Furious-Tube avec un autre mot de passe, connectez-vous avec ce mot de passe-là.
+- **Pastille nuage** dans la barre du haut : état de la sauvegarde (à jour, en cours, hors ligne, problème),
+  « Synchroniser maintenant », reconnexion ou activation de la sauvegarde.
+- Changer son mot de passe dans WhatQuiz le change aussi en ligne ; supprimer son compte efface aussi sa sauvegarde
+  en ligne (le compte Firebase/Furious-Tube lui-même est conservé).
+- **Lancer une partie depuis l'application** avec un compte professeur : les élèves la rejoignent **sans compte**,
+  sur le site (`/join` ou QR code) ou dans l'application. Pendant la partie, l'écran du téléphone du professeur
+  reste allumé (APK 1.2.1) ; gardez l'application ouverte, la partie tourne sur cet appareil.
+
+**À faire une fois dans la console Firebase** (sinon la pastille indique « règles Firestore non publiées ») :
+console.firebase.google.com → projet *furioustube-9d498* → **Firestore Database** → onglet **Règles** → remplacer
+le contenu par celui de `firestore.rules` du dépôt Furious-Tube (il garde la règle de Furious-Tube et ajoute celle de
+WhatQuiz) → **Publier**. Ces règles réservent les données `whatquiz/{uid}` à leur propriétaire : personne d'autre,
+ni un autre compte ni un visiteur, ne peut les lire ou les modifier.
+
+```
+match /whatquiz/{uid}/{document=**} {
+  allow read, write: if request.auth != null && request.auth.uid == uid;
+}
+```
+
+Code : `client/src/standalone/cloud.ts` (synchronisation), `client/src/components/CloudStatus.tsx` (pastille).
+Tests : émulateurs Firebase (Auth + Firestore) avec ces règles, et scénario site ↔ application dans Chromium.
 
 Compilation manuelle équivalente :
 

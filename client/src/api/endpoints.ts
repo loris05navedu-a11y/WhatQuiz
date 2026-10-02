@@ -50,7 +50,11 @@ export const authApi = {
     openedSession(api<SessionResponse>('POST', '/auth/register', input)),
   demo: () => openedSession(api<SessionResponse>('POST', '/auth/demo')),
   /** Compte Google ou Furious-Tube (Firebase) : ouvre le compte de cet appareil, créé au besoin. */
-  firebase: (profile: FirebaseProfile, role: Role) => openedSession(api<SessionResponse>('POST', '/auth/firebase', { ...profile, role })),
+  firebase: (profile: FirebaseProfile, role: Role, password?: string) =>
+    openedSession(api<SessionResponse>('POST', '/auth/firebase', { ...profile, role, ...(password ? { password } : {}) })),
+  /** Mode sans serveur : relie le compte ouvert à un compte en ligne (sauvegarde synchronisée). */
+  linkCloud: (uid: string) => api<{ user: PublicUser }>('POST', '/auth/link', { uid }),
+  cloud: () => api<{ uid: string | null }>('GET', '/auth/cloud'),
   logout: async () => {
     try {
       return await api<{ ok: true }>('POST', '/auth/logout');

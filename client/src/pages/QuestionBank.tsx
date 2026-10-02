@@ -16,6 +16,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
 import { QuestionPreview } from '../editor/QuestionPreview';
 import { TagsInput } from '../editor/TagsInput';
+import { useSyncRefresh } from '../lib/useSyncRefresh';
 
 type Dialog =
   | { kind: 'question'; item: BankQuestion | null }
@@ -53,6 +54,7 @@ export function QuestionBankPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  useSyncRefresh(load);
 
   const questions = useMemo(() => data?.questions ?? [], [data]);
   const folders = useMemo(() => data?.folders ?? [], [data]);

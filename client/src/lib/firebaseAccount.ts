@@ -28,15 +28,43 @@ export const GOOGLE_AVAILABLE = FIREBASE_ACCOUNTS && typeof navigator !== 'undef
 type Sdk = typeof import('firebase/auth');
 let loaded: Promise<{ auth: import('firebase/auth').Auth; sdk: Sdk }> | null = null;
 
+/** Tests uniquement : émulateurs Firebase locaux (jamais défini dans le site publié). */
+const EMULATOR_HOST: string | undefined = import.meta.env.VITE_FIREBASE_EMULATOR || undefined;
+
+function firebaseApp(app: typeof import('firebase/app')) {
+  // Application Firebase par défaut, comme Furious-Tube : la session ouverte sur l'un est reconnue par l'autre.
+  return app.getApps()[0] ?? app.initializeApp(FIREBASE_CONFIG);
+}
+
 /** À appeler à l'affichage de la page : la fenêtre Google doit s'ouvrir dès le clic, sans attendre un téléchargement. */
 export function preloadFirebase() {
   loaded ??= Promise.all([import('firebase/app'), import('firebase/auth')]).then(([app, sdk]) => {
-    // Application Firebase par défaut, comme Furious-Tube : la session ouverte sur l'un est reconnue par l'autre.
-    const auth = sdk.getAuth(app.getApps()[0] ?? app.initializeApp(FIREBASE_CONFIG));
+    const auth = sdk.getAuth(firebaseApp(app));
+    if (EMULATOR_HOST) sdk.connectAuthEmulator(auth, `http://${EMULATOR_HOST}:9099`, { disableWarnings: true });
     auth.languageCode = 'fr';
     return { auth, sdk };
   });
   return loaded;
+}
+
+type StoreSdk = typeof import('firebase/firestore');
+let store: Promise<{ db: import('firebase/firestore').Firestore; sdk: StoreSdk }> | null = null;
+
+/** Base Firestore du projet (sauvegarde des comptes). Chargée seulement quand un compte synchronisé est ouvert. */
+export function loadFirestore() {
+  store ??= Promise.all([import('firebase/app'), import('firebase/firestore'), preloadFirebase()]).then(([app, sdk]) => {
+    const db = sdk.getFirestore(firebaseApp(app));
+    if (EMULATOR_HOST) sdk.connectFirestoreEmulator(db, EMULATOR_HOST, 8080);
+    return { db, sdk };
+  });
+  return store;
+}
+
+/** Identifiant Firebase du compte connecté dans ce navigateur (null : aucun). */
+export async function firebaseUid(): Promise<string | null> {
+  const { auth } = await preloadFirebase();
+  await auth.authStateReady();
+  return auth.currentUser?.uid ?? null;
 }
 
 function toProfile(user: import('firebase/auth').User): FirebaseProfile {
@@ -53,11 +81,17 @@ const MESSAGES: Record<string, string> = {
   'auth/user-disabled': 'Ce compte Furious-Tube a été désactivé',
   'auth/operation-not-allowed': 'Ce mode de connexion n’est pas activé dans Firebase (Authentication → Sign-in method)',
   'auth/unauthorized-domain': 'Ce site n’est pas autorisé dans Firebase (Authentication → Paramètres → Domaines autorisés)',
+  'auth/email-already-in-use': 'Un compte existe déjà avec cette adresse : connectez-vous avec son mot de passe',
+  'auth/weak-password': 'Mot de passe trop faible (6 caractères minimum)',
+  'auth/invalid-email': 'Adresse e-mail invalide',
+  'auth/requires-recent-login': 'Reconnectez-vous puis recommencez',
 };
 
 function readable(error: unknown): ApiError {
   if (error instanceof ApiError) return error;
   const code = (error as { code?: string }).code ?? '';
+  if (code === 'auth/email-already-in-use') return new ApiError(409, MESSAGES[code]);
+  if (code === 'auth/weak-password' || code === 'auth/invalid-email') return new ApiError(400, MESSAGES[code]);
   return new ApiError(code.includes('credential') || code.includes('password') || code.includes('user-not-found') ? 401 : 0, MESSAGES[code] ?? 'Connexion impossible, réessayez');
 }
 
@@ -79,11 +113,61 @@ export async function signInWithGoogle(): Promise<FirebaseProfile> {
   }
 }
 
-/** Connexion avec l'e-mail et le mot de passe d'un compte Furious-Tube. */
+/** Connexion avec l'e-mail et le mot de passe d'un compte en ligne (WhatQuiz ou Furious-Tube). */
 export async function signInWithFuriousTube(email: string, password: string): Promise<FirebaseProfile> {
   const { auth, sdk } = await preloadFirebase();
   try {
     return toProfile((await sdk.signInWithEmailAndPassword(auth, email.trim(), password)).user);
+  } catch (error) {
+    throw readable(error);
+  }
+}
+
+export const signInWithEmail = signInWithFuriousTube;
+
+/** Création du compte en ligne : le même e-mail et le même mot de passe ouvrent le compte sur le site et dans l'application. */
+export async function createOnlineAccount(email: string, password: string, displayName: string): Promise<FirebaseProfile> {
+  const { auth, sdk } = await preloadFirebase();
+  try {
+    const { user } = await sdk.createUserWithEmailAndPassword(auth, email.trim(), password);
+    await sdk.updateProfile(user, { displayName }).catch(() => undefined);
+    return { ...toProfile(user), displayName };
+  } catch (error) {
+    throw readable(error);
+  }
+}
+
+/**
+ * Relie un compte de cet appareil à un compte en ligne (mêmes identifiants) : connexion, ou création si l'adresse
+ * est libre. Renvoie null si l'adresse appartient déjà à un compte en ligne avec un autre mot de passe.
+ */
+export async function connectOnlineAccount(email: string, password: string, displayName: string): Promise<FirebaseProfile | null> {
+  try {
+    return await signInWithEmail(email, password);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) throw error;
+  }
+  try {
+    return await createOnlineAccount(email, password, displayName);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) return null;
+    throw error;
+  }
+}
+
+/** Mot de passe changé sur WhatQuiz : le compte en ligne suit (ajouté s'il n'en avait pas, ex. compte Google). */
+export async function changeOnlinePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const { auth, sdk } = await preloadFirebase();
+  const user = auth.currentUser;
+  if (!user?.email) return;
+  try {
+    const hasPassword = user.providerData.some((p) => p.providerId === 'password');
+    if (!hasPassword) {
+      await sdk.linkWithCredential(user, sdk.EmailAuthProvider.credential(user.email, newPassword));
+      return;
+    }
+    await sdk.reauthenticateWithCredential(user, sdk.EmailAuthProvider.credential(user.email, currentPassword));
+    await sdk.updatePassword(user, newPassword);
   } catch (error) {
     throw readable(error);
   }
