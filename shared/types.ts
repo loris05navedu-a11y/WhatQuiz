@@ -1,3 +1,4 @@
+import type { PresenceEvent, PresenceInfo, PresenceReport } from './presence';
 import type { QuestionType } from './constants';
 
 export type { QuestionType } from './constants';
@@ -192,6 +193,10 @@ export interface GameSettings {
   /** La partie avance toute seule (correction, classement, question suivante). */
   autoAdvance: boolean;
   maxPlayers: number;
+  /** Surveillance de présence : le professeur est prévenu quand un élève quitte la page ou l'application. */
+  presenceWatch: boolean;
+  /** Application Android : demander l'épinglage de l'écran pendant la partie (l'élève ne peut plus en sortir). */
+  pinApp: boolean;
 }
 
 export type GamePhase = 'lobby' | 'ready' | 'question' | 'reveal' | 'ended';
@@ -298,6 +303,8 @@ export interface PlayerView {
   outcome: QuestionOutcome | null;
   leaderboard: LeaderboardEntry[] | null;
   final: { rank: number; score: number; playerCount: number; podium: LeaderboardEntry[] } | null;
+  /** Surveillance de présence (null : désactivée). */
+  presence: { pinApp: boolean; exits: number; awayMs: number } | null;
 }
 
 export interface HostPlayer {
@@ -307,6 +314,7 @@ export interface HostPlayer {
   connected: boolean;
   answered: boolean;
   isBot: boolean;
+  presence: PresenceInfo;
 }
 
 export interface TextAnswerStat {
@@ -339,6 +347,10 @@ export interface HostView {
   resultsVisible: boolean;
   leaderboard: LeaderboardEntry[];
   canGoBack: boolean;
+  /** Journal de surveillance (sorties et retours des élèves), du plus ancien au plus récent. */
+  presenceLog: PresenceEvent[];
+  /** Heure de l'hôte au moment de l'envoi (pour afficher les durées en direct). */
+  serverNow: number;
 }
 
 export type HostAction =
@@ -368,6 +380,7 @@ export interface ClientToServerEvents {
   'game:answer': (payload: { questionIndex: number; answer: SubmittedAnswer }, ack: (result: AckResult) => void) => void;
   'game:leave': () => void;
   'game:react': (payload: { emoji: string }) => void;
+  'game:presence': (report: PresenceReport) => void;
   'host:join': (payload: { code: string }, ack: (result: AckResult) => void) => void;
   'host:action': (action: HostAction, ack: (result: AckResult) => void) => void;
 }
@@ -403,6 +416,9 @@ export interface PlayerResultRow {
   correctCount: number;
   answeredCount: number;
   avgResponseMs: number | null;
+  /** Sorties de la partie et temps passé dehors (surveillance de présence). */
+  exits: number;
+  awayMs: number;
 }
 
 export interface QuestionStat {
@@ -422,6 +438,7 @@ export interface GameResults {
   settings: GameSettings;
   players: PlayerResultRow[];
   questions: QuestionStat[];
+  presenceLog: PresenceEvent[];
   totals: {
     successRate: number;
     answerCount: number;

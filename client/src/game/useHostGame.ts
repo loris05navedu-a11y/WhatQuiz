@@ -32,7 +32,7 @@ export function useHostGame(code: string) {
     });
     socket.on('disconnect', () => setConnected(false));
     socket.on('host:state', (next) => {
-      if (next.timer) setClockOffset(next.timer.serverNow - Date.now());
+      setClockOffset((next.timer?.serverNow ?? next.serverNow) - Date.now());
       setView(next);
     });
     let nextId = 0;

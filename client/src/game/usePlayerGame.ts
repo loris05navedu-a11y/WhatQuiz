@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ERRORS } from '../../../shared/constants';
+import type { PresenceReport } from '../../../shared/presence';
 import type { PlayerView, SubmittedAnswer } from '../../../shared/types';
 import { createGameSocket, emitWithAck, type GameSocket } from '../lib/socket';
 import { readStorage, writeStorage } from '../lib/storage';
@@ -31,7 +32,10 @@ export function usePlayerGame(code: string, autoJoinNickname?: string) {
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(true);
   const [clockOffset, setClockOffset] = useState(0);
+  /** Change à chaque (re)connexion acceptée : la surveillance de présence renvoie alors son état. */
+  const [session, setSession] = useState(0);
   const socketRef = useRef<GameSocket | null>(null);
+  const connectedRef = useRef(false);
 
   const join = useCallback(
     async (nickname: string, token?: string): Promise<string | null> => {
@@ -43,6 +47,7 @@ export function usePlayerGame(code: string, autoJoinNickname?: string) {
         writeStorage('session', storageKey(code), JSON.stringify({ token: result.token, nickname }));
         setError(null);
         setStatus('joined');
+        setSession((n) => n + 1);
         return null;
       }
       if (token) writeStorage('session', storageKey(code), null);
@@ -60,6 +65,7 @@ export function usePlayerGame(code: string, autoJoinNickname?: string) {
     let firstConnection = true;
 
     socket.on('connect', () => {
+      connectedRef.current = true;
       setConnected(true);
       const stored = readStoredPlayer(code);
       if (stored) void join(stored.nickname, stored.token);
@@ -67,7 +73,10 @@ export function usePlayerGame(code: string, autoJoinNickname?: string) {
       else if (firstConnection) setStatus('needsNickname');
       firstConnection = false;
     });
-    socket.on('disconnect', () => setConnected(false));
+    socket.on('disconnect', () => {
+      connectedRef.current = false;
+      setConnected(false);
+    });
     socket.on('game:state', (next) => {
       if (next.timer) setClockOffset(next.timer.serverNow - Date.now());
       setView(next);
@@ -98,10 +107,15 @@ export function usePlayerGame(code: string, autoJoinNickname?: string) {
     socketRef.current?.emit('game:react', { emoji });
   }, []);
 
+  /** Signal de présence : jamais mis en attente pendant une coupure (l'état est renvoyé à la reconnexion). */
+  const sendPresence = useCallback((report: PresenceReport) => {
+    if (connectedRef.current) socketRef.current?.emit('game:presence', report);
+  }, []);
+
   const leave = useCallback(() => {
     socketRef.current?.emit('game:leave');
     writeStorage('session', storageKey(code), null);
   }, [code]);
 
-  return { status, view, error, connected, clockOffset, join, answer, react, leave };
+  return { status, view, error, connected, clockOffset, session, join, answer, react, sendPresence, leave };
 }

@@ -1,10 +1,15 @@
 package fr.whatquiz.app;
 
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.ContentValues;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.res.Configuration;
 import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
@@ -14,6 +19,7 @@ import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.View;
 import android.view.WindowInsets;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -34,6 +40,11 @@ import java.util.List;
 
 /**
  * Coquille Android de WhatQuiz : affiche le site WhatQuiz (GitHub Pages) en plein écran dans une WebView.
+ *
+ * Surveillance des parties : l'activité transmet au site ce que voit le système (bouton Accueil, applis récentes,
+ * volet de notifications, écran partagé, écran éteint…) par l'événement JavaScript « whatquiz-native ».
+ * Pendant une partie surveillée, le site peut aussi épingler l'application, garder l'écran allumé et
+ * empêcher les captures d'écran.
  */
 public class MainActivity extends Activity {
     private static final String OFFLINE_URL = "file:///android_asset/offline.html";
@@ -42,6 +53,15 @@ public class MainActivity extends Activity {
     private WebView web;
     private String siteUrl;
     private ValueCallback<Uri[]> pendingChooser;
+    private boolean pinRequested;
+
+    /** Écran éteint (bouton marche/arrêt ou mise en veille) : signalé avant même la mise en pause. */
+    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) signal("screen-off");
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,11 +75,15 @@ public class MainActivity extends Activity {
         setContentView(root);
         applySystemBarInsets(root);
 
+        // Pas d'inspection à distance de la page : la surveillance ne peut pas être modifiée depuis un ordinateur.
+        WebView.setWebContentsDebuggingEnabled(false);
+        registerReceiver(screenReceiver, new IntentFilter(Intent.ACTION_SCREEN_OFF));
+
         WebSettings settings = web.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " WhatQuizAndroid/1.0");
+        settings.setUserAgentString(settings.getUserAgentString() + " WhatQuizAndroid/" + BuildConfig.VERSION_NAME);
         CookieManager.getInstance().setAcceptCookie(true);
 
         web.addJavascriptInterface(new Bridge(), "WhatQuizAndroid");
@@ -178,6 +202,84 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this, "Impossible d'enregistrer le fichier", Toast.LENGTH_LONG).show());
             }
         }
+
+        @JavascriptInterface
+        public String version() {
+            return BuildConfig.VERSION_NAME;
+        }
+
+        /** Épinglage de l'écran (Android demande une confirmation à l'élève). */
+        @JavascriptInterface
+        public void pin(boolean on) {
+            runOnUiThread(() -> setPinned(on));
+        }
+
+        @JavascriptInterface
+        public boolean isPinned() {
+            return lockTaskActive();
+        }
+
+        @JavascriptInterface
+        public boolean isInMultiWindow() {
+            return MainActivity.this.isInMultiWindowMode();
+        }
+
+        /** Partie surveillée en cours : écran toujours allumé (pas de fausse sortie par mise en veille) et captures bloquées. */
+        @JavascriptInterface
+        public void gameMode(boolean on) {
+            runOnUiThread(() -> {
+                int flags = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON | WindowManager.LayoutParams.FLAG_SECURE;
+                if (on) getWindow().addFlags(flags);
+                else getWindow().clearFlags(flags);
+            });
+        }
+    }
+
+    private void setPinned(boolean on) {
+        pinRequested = on;
+        try {
+            if (on) startLockTask();
+            else if (lockTaskActive()) stopLockTask();
+        } catch (RuntimeException ignored) {
+            // Épinglage refusé ou indisponible : le site le constate avec isPinned() et prévient le professeur.
+        }
+    }
+
+    private boolean lockTaskActive() {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        return manager != null && manager.getLockTaskModeState() != ActivityManager.LOCK_TASK_MODE_NONE;
+    }
+
+    /** Transmet un signal du système au site (window « whatquiz-native »). Le nom est toujours une constante. */
+    private void signal(String name) {
+        if (web == null) return;
+        web.evaluateJavascript("window.dispatchEvent(new CustomEvent('whatquiz-native',{detail:'" + name + "'}))", null);
+    }
+
+    /** Bouton Accueil ou applis récentes : l'élève quitte volontairement l'application. */
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        signal("leave");
+    }
+
+    /** Volet de notifications, fenêtre par-dessus, écran partagé… : l'application n'a plus la main. */
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        signal(hasFocus ? "focus" : "unfocus");
+    }
+
+    @Override
+    public void onMultiWindowModeChanged(boolean isInMultiWindowMode, Configuration newConfig) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig);
+        signal(isInMultiWindowMode ? "multiwindow-on" : "multiwindow-off");
+    }
+
+    @Override
+    protected void onStop() {
+        signal("stop");
+        super.onStop();
     }
 
     private String writeDownload(String name, String mimeType, byte[] bytes) throws Exception {
@@ -218,6 +320,8 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        // Signalé avant la mise en pause de la page, pour que le message parte encore.
+        signal("pause");
         super.onPause();
         CookieManager.getInstance().flush();
         web.onPause();
@@ -227,10 +331,17 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         web.onResume();
+        signal("resume");
     }
 
     @Override
     protected void onDestroy() {
+        try {
+            unregisterReceiver(screenReceiver);
+        } catch (IllegalArgumentException ignored) {
+            // Déjà désinscrit.
+        }
+        if (pinRequested) setPinned(false);
         web.destroy();
         super.onDestroy();
     }

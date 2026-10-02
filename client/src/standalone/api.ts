@@ -19,7 +19,7 @@ import {
   profileSchema,
   registerSchema,
 } from '../../../server/src/validation';
-import { ERRORS } from '../../../shared/constants';
+import { DEFAULT_GAME_SETTINGS, ERRORS } from '../../../shared/constants';
 import { randomToken } from '../../../shared/random';
 import type {
   DashboardStats,
@@ -315,7 +315,8 @@ function results(game: LocalGame): GameResults {
   const kept = new Set(game.players.filter((p) => !p.kicked).map((p) => p.id));
   const players: PlayerResultRow[] = game.results
     .filter((r) => nicknames.has(r.playerId))
-    .map((r) => ({ ...r, nickname: nicknames.get(r.playerId)! }))
+    // Les parties enregistrées avant la surveillance de présence n'ont pas ces champs.
+    .map((r) => ({ ...r, exits: r.exits ?? 0, awayMs: r.awayMs ?? 0, nickname: nicknames.get(r.playerId)! }))
     .sort((a, b) => a.rank - b.rank || a.nickname.localeCompare(b.nickname, 'fr'));
 
   const perQuestion = new Map<number, { answered: number; correct: number; totalMs: number }>();
@@ -347,7 +348,8 @@ function results(game: LocalGame): GameResults {
   const sorted = questions.filter((q) => q.scored).sort((a, b) => a.successRate - b.successRate);
   return {
     game: summary,
-    settings: game.settings,
+    settings: { ...DEFAULT_GAME_SETTINGS, ...game.settings, presenceWatch: game.settings.presenceWatch ?? false },
+    presenceLog: game.presenceLog ?? [],
     players,
     questions,
     totals: {

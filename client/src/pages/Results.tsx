@@ -11,6 +11,7 @@ import { useToast } from '../context/ToastContext';
 import { Podium } from '../game/Leaderboard';
 import { safeFileName, saveTextFile } from '../lib/download';
 import { formatDateTime, formatNumber, formatPercent, formatSeconds, plural } from '../lib/format';
+import { formatAwayDuration, PRESENCE_REASON_LABELS } from '../../../shared/presence';
 
 const SCORING_LABELS = { speed: 'Bonus rapidité', fixed: 'Points fixes', none: 'Sans score' };
 
@@ -32,6 +33,7 @@ export function ResultsPage() {
 
   if (!results) return <PageLoader />;
   const { game, players, questions, totals, settings } = results;
+  const watched = settings.presenceWatch;
 
   return (
     <div className="stack results" style={{ '--gap': '28px' } as CSSProperties}>
@@ -91,6 +93,7 @@ export function ResultsPage() {
                     <th className="num">Réussite</th>
                     <th className="num">Réponses</th>
                     <th className="num">Temps moyen</th>
+                    {watched && <th className="num">Sorties</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -106,12 +109,25 @@ export function ResultsPage() {
                         {player.answeredCount}/{game.questionCount}
                       </td>
                       <td className="num">{formatSeconds(player.avgResponseMs)}</td>
+                      {watched && (
+                        <td className={`num${player.exits > 0 ? ' presence-flag' : ''}`}>
+                          {player.exits > 0 ? (
+                            <>
+                              <Icon name="alert" size={14} /> {player.exits} · {formatAwayDuration(player.awayMs)}
+                            </>
+                          ) : (
+                            '0'
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </section>
+
+          {watched && <PresenceReport results={results} />}
 
           <section className="card stack" aria-labelledby="questions-title">
             <h2 id="questions-title" className="section-title">
@@ -173,11 +189,66 @@ function Highlight({ tone, icon, title, stat }: { tone: 'danger' | 'success'; ic
   );
 }
 
+const journalTime = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+/** Bilan de la surveillance : élèves sortis de la partie et journal horodaté. */
+function PresenceReport({ results }: { results: GameResults }) {
+  const out = results.players.filter((p) => p.exits > 0).sort((a, b) => b.exits - a.exits || b.awayMs - a.awayMs);
+  return (
+    <section className="card stack" aria-labelledby="presence-report-title">
+      <h2 id="presence-report-title" className="section-title">
+        <Icon name="eye" size={20} /> Surveillance des sorties
+      </h2>
+      {out.length === 0 ? (
+        <p className="presence-ok">
+          <Icon name="check" size={18} /> Aucun élève n’a quitté la partie.
+        </p>
+      ) : (
+        <>
+          <p>
+            {plural(out.length, 'élève a quitté', 'élèves ont quitté')} la partie au moins une fois :{' '}
+            {out.map((p) => `${p.nickname} (${plural(p.exits, 'sortie')}, ${formatAwayDuration(p.awayMs)})`).join(', ')}.
+          </p>
+          <details className="presence-details">
+            <summary>Journal détaillé ({results.presenceLog.length} événements)</summary>
+            <ol className="presence-journal">
+              {results.presenceLog.map((event) => (
+                <li key={event.id} className={event.kind === 'away' ? 'is-away' : 'is-back'}>
+                  <time>{journalTime.format(new Date(event.at))}</time>
+                  <Icon name={event.kind === 'away' ? 'alert' : 'check'} size={16} />
+                  <span>
+                    <b>{event.nickname}</b>{' '}
+                    {event.kind === 'away'
+                      ? event.reason
+                        ? PRESENCE_REASON_LABELS[event.reason]
+                        : 'a quitté la partie'
+                      : `est de retour (absence : ${formatAwayDuration(event.durationMs ?? 0)})`}
+                  </span>
+                  {event.question > 0 && <span className="muted small">Q{event.question}</span>}
+                </li>
+              ))}
+            </ol>
+          </details>
+        </>
+      )}
+    </section>
+  );
+}
+
 function downloadCsv(results: GameResults): void {
   const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+  const watched = results.settings.presenceWatch;
   const rows = [
-    ['Rang', 'Pseudo', 'Score', 'Bonnes réponses', 'Réponses', 'Temps moyen (s)'],
-    ...results.players.map((p) => [p.rank, p.nickname, p.score, p.correctCount, p.answeredCount, p.avgResponseMs === null ? '' : (p.avgResponseMs / 1000).toFixed(1)]),
+    ['Rang', 'Pseudo', 'Score', 'Bonnes réponses', 'Réponses', 'Temps moyen (s)', ...(watched ? ['Sorties', 'Temps hors partie (s)'] : [])],
+    ...results.players.map((p) => [
+      p.rank,
+      p.nickname,
+      p.score,
+      p.correctCount,
+      p.answeredCount,
+      p.avgResponseMs === null ? '' : (p.avgResponseMs / 1000).toFixed(1),
+      ...(watched ? [p.exits, Math.round(p.awayMs / 1000)] : []),
+    ]),
   ];
   const csv = '\uFEFF' + rows.map((row) => row.map(escape).join(';')).join('\n');
   saveTextFile(csv, `whatquiz-${safeFileName(results.game.quizTitle)}-${results.game.code}.csv`, 'text/csv');

@@ -110,6 +110,25 @@ export function LaunchPage() {
         />
       </section>
 
+      <section className="card stack" aria-labelledby="presence-title">
+        <h2 id="presence-title" className="section-title">
+          Surveillance des sorties
+        </h2>
+        <Switch
+          label="Me prévenir quand un élève quitte la partie"
+          description="Onglet ou application quittés, page fermée, autre fenêtre, écran partagé, appareil qui ne répond plus : le nom de l’élève s’affiche aussitôt sur votre écran. Les élèves en sont informés avant le début."
+          checked={settings.presenceWatch}
+          onChange={(v) => set({ presenceWatch: v, ...(v ? {} : { pinApp: false }) })}
+        />
+        <Switch
+          label="Épingler l’application Android pendant la partie"
+          description="Pour les élèves qui jouent avec l’APK WhatQuiz : l’application est épinglée à l’écran (l’élève accepte une fois) et ne peut plus être quittée sans le geste système ; tout désépinglage vous est signalé."
+          checked={settings.pinApp}
+          onChange={(v) => set({ pinApp: v })}
+          disabled={!settings.presenceWatch}
+        />
+      </section>
+
       <Button variant="primary" size="lg" icon="play" block loading={launching} onClick={launch}>
         Créer la salle et afficher le code
       </Button>

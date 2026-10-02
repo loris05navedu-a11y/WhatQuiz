@@ -1,3 +1,4 @@
+import { REPORTABLE_REASONS, type AwayReason } from '../../shared/presence';
 import { z } from 'zod';
 import { CATEGORIES, LIMITS, QUESTION_TYPES, TIME_LIMITS } from '../../shared/constants';
 import { isValidMediaUrl, LOCAL_ASSET, MAX_MEDIA_PER_QUESTION } from '../../shared/media';
@@ -139,7 +140,16 @@ export const gameSettingsSchema = z.object({
   autoRevealAnswers: z.boolean(),
   autoAdvance: z.boolean(),
   maxPlayers: z.number().int().min(1).max(LIMITS.maxPlayers),
+  presenceWatch: z.boolean(),
+  pinApp: z.boolean(),
 });
+
+/** Signal de présence d'un élève (format court : il part toutes les 2 s). */
+export const presenceReportSchema = z.discriminatedUnion('s', [
+  z.object({ s: z.literal('beat'), v: z.boolean(), app: z.boolean().optional(), pinned: z.boolean().optional() }),
+  z.object({ s: z.literal('away'), r: z.enum(REPORTABLE_REASONS as unknown as [AwayReason, ...AwayReason[]]), app: z.boolean().optional() }),
+  z.object({ s: z.literal('back'), app: z.boolean().optional() }),
+]);
 
 export const createGameSchema = z.object({
   quizId: z.number().int().positive(),

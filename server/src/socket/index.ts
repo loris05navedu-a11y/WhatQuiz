@@ -9,7 +9,7 @@ import type { GameRoom, RoomTransport } from '../game/GameRoom';
 import { bearerToken, userFromCookieHeader } from '../http/auth';
 import { RateLimiter } from '../http/rateLimit';
 import type { Services } from '../services';
-import { answerPayloadSchema, hostActionSchema, joinSchema } from '../validation';
+import { answerPayloadSchema, hostActionSchema, joinSchema, presenceReportSchema } from '../validation';
 
 interface SocketData {
   user?: PublicUser;
@@ -17,6 +17,7 @@ interface SocketData {
   hostCode?: string;
   joinLimiter: RateLimiter;
   reactLimiter: RateLimiter;
+  presenceLimiter: RateLimiter;
 }
 
 type IoServer = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -75,6 +76,8 @@ export function createRealtime(httpServer: HttpServer, services: Services): { io
     )?.user;
     socket.data.joinLimiter = new RateLimiter(15, 60_000);
     socket.data.reactLimiter = new RateLimiter(6, 5_000);
+    // Un signe de vie toutes les 2 s, plus les sorties et retours : large marge, mais pas d'inondation possible.
+    socket.data.presenceLimiter = new RateLimiter(40, 10_000);
 
     const currentPlayerRoom = (): GameRoom | undefined => {
       const player = socket.data.player;
@@ -117,6 +120,13 @@ export function createRealtime(httpServer: HttpServer, services: Services): { io
       if (!(REACTIONS as readonly string[]).includes(emoji)) return;
       if (!socket.data.reactLimiter.consume('react')) return;
       io.to(hostRoom(room.code)).emit('host:reaction', { emoji, nickname: player.nickname });
+    });
+
+    socket.on('game:presence', (payload) => {
+      const room = currentPlayerRoom();
+      if (!room || !socket.data.player || !socket.data.presenceLimiter.consume('presence')) return;
+      const report = presenceReportSchema.safeParse(payload);
+      if (report.success) room.reportPresence(socket.data.player.playerId, report.data);
     });
 
     socket.on('game:leave', () => {

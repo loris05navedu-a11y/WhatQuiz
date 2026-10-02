@@ -1,4 +1,15 @@
 import { ERRORS, LIMITS } from '../../../shared/constants';
+import {
+  PRESENCE_BEAT_MS,
+  PRESENCE_LOG_LIMIT,
+  PRESENCE_SEVERITY,
+  PRESENCE_SILENT_MS,
+  stateForReason,
+  type AwayReason,
+  type PresenceEvent,
+  type PresenceInfo,
+  type PresenceReport,
+} from '../../../shared/presence';
 import { randomToken, randomUuid } from '../../../shared/random';
 import { questionType, type QuestionLayout } from '../../../shared/questionTypes';
 import { pointsForGrade } from '../../../shared/scoring';
@@ -64,7 +75,18 @@ export interface RoomPlayer {
   revealedScore: number;
   answers: Map<number, RecordedAnswer>;
   disconnectTimer: Timer | null;
+  presence: PlayerPresence;
 }
+
+/** Présence d'un élève, tenue par l'hôte : dernier signe de vie reçu (horloge de l'hôte). */
+interface PlayerPresence extends PresenceInfo {
+  lastBeat: number;
+}
+
+/** Fréquence de vérification des signes de vie pendant la partie. */
+const PRESENCE_CHECK_MS = 1_000;
+/** Événements de surveillance envoyés à l'écran du professeur (le journal complet est enregistré à la fin). */
+const PRESENCE_LOG_IN_VIEW = 80;
 
 export interface RoomOptions {
   id: string;
@@ -116,6 +138,11 @@ export class GameRoom {
   private questionTimer: Timer | null = null;
   private autoTimer: Timer | null = null;
   private readonly botTimers = new Set<Timer>();
+
+  private readonly presenceLog: PresenceEvent[] = [];
+  private presenceSeq = 0;
+  private presenceTimer: ReturnType<typeof setInterval> | null = null;
+  private watchActive = false;
 
   private dirtyHost = false;
   private dirtyPlayers: Set<string> | 'all' = new Set();
@@ -186,6 +213,7 @@ export class GameRoom {
     const player = this.activePlayers.find((p) => p.socketId === socketId);
     if (!player) return;
     player.socketId = null;
+    this.markAway(player, 'disconnected', Date.now());
     if (this.phase === 'lobby') {
       player.disconnectTimer = setTimeout(() => {
         if (!player.socketId && this.phase === 'lobby') this.removePlayer(player, false);
@@ -229,6 +257,7 @@ export class GameRoom {
       revealedScore: 0,
       answers: new Map(),
       disconnectTimer: null,
+      presence: { state: 'present', reason: null, since: null, exits: 0, awayMs: 0, app: false, pinned: false, lastBeat: Date.now() },
     };
     this.players.set(player.id, player);
     this.store?.addPlayer({ id: player.id, gameId: this.id, nickname: player.nickname, userId: player.userId });
@@ -346,6 +375,7 @@ export class GameRoom {
     if (this.players.size === 0) throw new GameError('Attendez au moins un joueur pour démarrer');
     this.store?.markStarted(this.id, this.settings);
     this.goToReady(0);
+    this.syncPresenceWatch();
   }
 
   startQuestion(): void {
@@ -468,6 +498,7 @@ export class GameRoom {
     if (scoringMode && this.phase === 'lobby') this.settings.scoringMode = scoringMode;
     if (maxPlayers) this.settings.maxPlayers = Math.max(maxPlayers, this.players.size);
     Object.assign(this.settings, rest);
+    this.syncPresenceWatch();
     this.markDirty({ host: true, players: 'all' });
   }
 
@@ -492,6 +523,7 @@ export class GameRoom {
     this.clearQuestionTimer();
     this.clearBots();
     this.phase = 'ended';
+    this.syncPresenceWatch();
     this.endedAt = Date.now();
     this.leaderboardVisible = false;
     const questionsPlayed = this.maxPlayedIndex + 1;
@@ -507,9 +539,11 @@ export class GameRoom {
           correctCount: answers.filter((a) => a.correct).length,
           answeredCount: answers.length,
           avgResponseMs: answers.length ? Math.round(totalMs / answers.length) : null,
+          exits: player.presence.exits,
+          awayMs: player.presence.awayMs,
         };
       });
-      this.store.finish(this.id, questionsPlayed, results, new Map(this.activePlayers.map((p) => [p.id, p.score])));
+      this.store.finish(this.id, questionsPlayed, results, new Map(this.activePlayers.map((p) => [p.id, p.score])), [...this.presenceLog]);
     }
     if (this.settings.autoAdvance) this.setResultsVisible(true);
     this.markDirty({ host: true, players: 'all' });
@@ -522,6 +556,142 @@ export class GameRoom {
   private requirePhase(phase: GamePhase): void {
     if (this.phase === phase) return;
     throw new GameError(this.phase === 'ended' ? ERRORS.gameEnded : ERRORS.forbidden);
+  }
+
+  /* ───────────── Surveillance de présence ───────────── */
+
+  /** La surveillance compte les sorties pendant la partie (de son lancement à sa fin), si le professeur l'a activée. */
+  get watching(): boolean {
+    return this.watchActive;
+  }
+
+  private shouldWatch(): boolean {
+    return this.settings.presenceWatch && (this.phase === 'ready' || this.phase === 'question' || this.phase === 'reveal');
+  }
+
+  /** Signal envoyé par l'appareil d'un élève. Les heures et les durées sont celles de l'hôte. */
+  reportPresence(playerId: string, report: PresenceReport): void {
+    const player = this.players.get(playerId);
+    if (!player || player.isBot || !player.socketId) return;
+    const presence = player.presence;
+    const now = Date.now();
+    presence.lastBeat = now;
+    if (report.app && !presence.app) {
+      presence.app = true;
+      this.markDirty({ host: true });
+    }
+    switch (report.s) {
+      case 'beat':
+        if (report.pinned !== undefined && report.pinned !== presence.pinned) {
+          const unpinned = presence.pinned && !report.pinned;
+          presence.pinned = report.pinned;
+          if (unpinned && this.settings.pinApp && this.watching) {
+            // Alerte ponctuelle : l'élève reste dans l'application, mais peut désormais en sortir.
+            presence.exits += 1;
+            this.logPresence(player, { kind: 'away', state: 'unfocused', reason: 'unpinned', at: now });
+          }
+          this.markDirty({ host: true });
+        }
+        // Le signe de vie porte l'état vu par l'appareil : il rattrape un message de sortie ou de retour perdu.
+        if (report.v) this.markBack(player, now);
+        else if (presence.state === 'present') this.markAway(player, 'hidden', now);
+        return;
+      case 'away':
+        return this.markAway(player, report.r, now);
+      case 'back':
+        return this.markBack(player, now);
+    }
+  }
+
+  private markAway(player: RoomPlayer, reason: AwayReason, now: number): void {
+    if (player.isBot) return;
+    const presence = player.presence;
+    const state = stateForReason(reason);
+    if (presence.state === 'present') {
+      presence.state = state;
+      presence.reason = reason;
+      // Silence : l'absence a commencé après le dernier signe de vie reçu, pas au moment où on la constate.
+      presence.since = reason === 'silent' ? Math.min(now, presence.lastBeat + PRESENCE_BEAT_MS) : now;
+      if (!this.watching) return this.markDirty({ host: true });
+      presence.exits += 1;
+    } else if (PRESENCE_SEVERITY[state] > PRESENCE_SEVERITY[presence.state]) {
+      // Aggravation d'une absence en cours (ex. : hors premier plan → application quittée) : pas de nouvelle sortie.
+      presence.state = state;
+      presence.reason = reason;
+      if (!this.watching) return this.markDirty({ host: true });
+    } else {
+      return;
+    }
+    this.logPresence(player, { kind: 'away', state, reason, at: presence.since ?? now });
+    this.markDirty({ host: true, players: [player.id] });
+  }
+
+  private markBack(player: RoomPlayer, now: number): void {
+    const presence = player.presence;
+    if (presence.state === 'present') return;
+    const since = presence.since;
+    presence.state = 'present';
+    presence.reason = null;
+    presence.since = null;
+    if (this.watching && since !== null) {
+      const durationMs = Math.max(0, now - since);
+      presence.awayMs += durationMs;
+      this.logPresence(player, { kind: 'back', state: 'present', reason: null, at: now, durationMs });
+    }
+    this.markDirty({ host: true, players: [player.id] });
+  }
+
+  private logPresence(player: RoomPlayer, event: Omit<PresenceEvent, 'id' | 'playerId' | 'nickname' | 'question'>): void {
+    this.presenceLog.push({ id: ++this.presenceSeq, playerId: player.id, nickname: player.nickname, question: this.questionIndex + 1, ...event });
+    if (this.presenceLog.length > PRESENCE_LOG_LIMIT) this.presenceLog.splice(0, this.presenceLog.length - PRESENCE_LOG_LIMIT);
+  }
+
+  /**
+   * Début (lancement, réactivation) ou fin (fin de partie, désactivation) de la surveillance, selon la phase et le réglage.
+   * Au début, un élève déjà absent compte une sortie ; à la fin, les absences en cours sont comptabilisées.
+   */
+  private syncPresenceWatch(): void {
+    const active = this.shouldWatch();
+    if (active === this.watchActive) return;
+    const now = Date.now();
+    if (this.presenceTimer) clearInterval(this.presenceTimer);
+    this.presenceTimer = null;
+    for (const player of this.activePlayers) {
+      if (player.isBot) continue;
+      const presence = player.presence;
+      if (active) {
+        presence.lastBeat = now;
+        if (!player.socketId && presence.state === 'present') {
+          presence.state = 'lost';
+          presence.reason = 'disconnected';
+        }
+        if (presence.state !== 'present') {
+          presence.since = now;
+          presence.exits += 1;
+          this.logPresence(player, { kind: 'away', state: presence.state, reason: presence.reason, at: now });
+        }
+      } else if (presence.since !== null && presence.state !== 'present') {
+        presence.awayMs += Math.max(0, now - presence.since);
+        presence.since = now;
+      }
+    }
+    this.watchActive = active;
+    if (active) {
+      this.presenceTimer = setInterval(() => this.checkSilence(), PRESENCE_CHECK_MS);
+      // Côté Node, cette vérification ne doit jamais empêcher le processus de s'arrêter.
+      (this.presenceTimer as { unref?: () => void }).unref?.();
+    }
+    this.markDirty({ host: true, players: 'all' });
+  }
+
+  /** Un élève connecté qui n'envoie plus de signe de vie est déclaré injoignable. */
+  private checkSilence(): void {
+    if (!this.watching) return;
+    const now = Date.now();
+    for (const player of this.activePlayers) {
+      if (player.isBot || !player.socketId) continue;
+      if (now - player.presence.lastBeat > PRESENCE_SILENT_MS) this.markAway(player, 'silent', now);
+    }
   }
 
   /* ───────────── Minuteries ───────────── */
@@ -584,6 +754,8 @@ export class GameRoom {
   }
 
   dispose(): void {
+    if (this.presenceTimer) clearInterval(this.presenceTimer);
+    this.presenceTimer = null;
     this.clearAuto();
     this.clearQuestionTimer();
     this.clearBots();
@@ -715,6 +887,7 @@ export class GameRoom {
         connected: p.isBot || p.socketId !== null,
         answered: p.answers.has(this.questionIndex),
         isBot: p.isBot,
+        presence: publicPresence(p.presence),
       })),
       questionIndex: this.questionIndex,
       questionCount: this.questionCount,
@@ -727,6 +900,8 @@ export class GameRoom {
       resultsVisible: this.resultsVisible,
       leaderboard: toLeaderboard(ranked, this.previousRanks),
       canGoBack: this.canGoBack(),
+      presenceLog: this.presenceLog.slice(-PRESENCE_LOG_IN_VIEW),
+      serverNow: Date.now(),
     };
   }
 
@@ -770,8 +945,13 @@ export class GameRoom {
         showFinal && leaderboard
           ? { rank: myRank ?? leaderboard.length, score: player.revealedScore, playerCount: this.players.size, podium: leaderboard.slice(0, 3) }
           : null,
+      presence: this.settings.presenceWatch && this.phase !== 'ended' ? { pinApp: this.settings.pinApp, exits: player.presence.exits, awayMs: player.presence.awayMs } : null,
     };
   }
+}
+
+function publicPresence({ lastBeat: _lastBeat, ...presence }: PlayerPresence): PresenceInfo {
+  return presence;
 }
 
 export function cleanNickname(value: string): string | null {

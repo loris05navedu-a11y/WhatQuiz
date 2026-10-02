@@ -3,7 +3,7 @@ import type { QuizSnapshot } from '../../../server/src/db/games';
 import { GameError } from '../../../server/src/game/errors';
 import { GameRoom, type RoomTransport } from '../../../server/src/game/GameRoom';
 import { RateLimiter } from '../../../server/src/http/rateLimit';
-import { answerPayloadSchema, hostActionSchema, joinSchema } from '../../../server/src/validation';
+import { answerPayloadSchema, hostActionSchema, joinSchema, presenceReportSchema } from '../../../server/src/validation';
 import { DEFAULT_GAME_SETTINGS, ERRORS, REACTIONS } from '../../../shared/constants';
 import { randomIntBetween, randomUuid } from '../../../shared/random';
 import type { AckResult, GameSettings, PublicUser, Quiz } from '../../../shared/types';
@@ -22,6 +22,7 @@ export interface HubClient {
   hostCode?: string;
   readonly joinLimiter: RateLimiter;
   readonly reactLimiter: RateLimiter;
+  readonly presenceLimiter: RateLimiter;
   deliver(event: string, payload?: unknown): void;
 }
 
@@ -159,6 +160,7 @@ export class Hub {
       user,
       joinLimiter: new RateLimiter(15, 60_000),
       reactLimiter: new RateLimiter(6, 5_000),
+      presenceLimiter: new RateLimiter(40, 10_000),
       deliver,
     };
     this.clients.set(client.id, client);
@@ -217,6 +219,14 @@ export class Hub {
         const emoji = (payload as { emoji?: unknown } | null)?.emoji;
         if (!room || !player || typeof emoji !== 'string' || !(REACTIONS as readonly string[]).includes(emoji)) return null;
         if (client.reactLimiter.consume('react')) this.toHosts(room.code, 'host:reaction', { emoji, nickname: player.nickname });
+        return null;
+      }
+
+      case 'game:presence': {
+        const room = this.playerRoom(client);
+        if (!room || !client.player || !client.presenceLimiter.consume('presence')) return null;
+        const report = presenceReportSchema.safeParse(payload);
+        if (report.success) room.reportPresence(client.player.playerId, report.data);
         return null;
       }
 

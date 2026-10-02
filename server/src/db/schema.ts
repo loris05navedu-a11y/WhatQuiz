@@ -161,4 +161,10 @@ export const MIGRATIONS: Migration[] = [
   );
   CREATE INDEX idx_documents_owner ON documents(kind, owner_id);
   `,
+  // Surveillance de présence : sorties et temps passé hors de la partie, journal des événements.
+  `
+  ALTER TABLE game_results ADD COLUMN exits INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE game_results ADD COLUMN away_ms INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE game_sessions ADD COLUMN presence_log TEXT NOT NULL DEFAULT '[]';
+  `,
 ];

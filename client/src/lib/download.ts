@@ -1,12 +1,4 @@
-interface AndroidBridge {
-  saveFile(fileName: string, mimeType: string, base64: string): void;
-}
-
-declare global {
-  interface Window {
-    WhatQuizAndroid?: AndroidBridge;
-  }
-}
+import './android';
 
 function toBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);

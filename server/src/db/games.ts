@@ -9,6 +9,8 @@ import type {
   StudentHistoryEntry,
   SubmittedAnswer,
 } from '../../../shared/types';
+import { DEFAULT_GAME_SETTINGS } from '../../../shared/constants';
+import type { PresenceEvent } from '../../../shared/presence';
 import { isScored } from '../../../shared/questionTypes';
 import type { Database } from './database';
 
@@ -19,6 +21,7 @@ export interface QuizSnapshot {
 }
 
 interface GameRow {
+  presence_log?: string;
   id: string;
   code: string;
   quiz_id: number | null;
@@ -41,6 +44,8 @@ export interface FinalPlayerResult {
   correctCount: number;
   answeredCount: number;
   avgResponseMs: number | null;
+  exits: number;
+  awayMs: number;
 }
 
 const SUMMARY_SELECT = `
@@ -52,6 +57,15 @@ const SUMMARY_SELECT = `
 /** Questions jouées qui ont une bonne réponse (les sondages ne comptent pas dans le taux de réussite). */
 export function scoredQuestionCount(snapshot: QuizSnapshot, played: number): number {
   return snapshot.questions.slice(0, played).filter(isScored).length;
+}
+
+function parsePresenceLog(raw: string | undefined): PresenceEvent[] {
+  try {
+    const value = JSON.parse(raw ?? '[]') as unknown;
+    return Array.isArray(value) ? (value as PresenceEvent[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 function parseSnapshot(raw: string): QuizSnapshot {
@@ -139,19 +153,20 @@ export class GameRepository {
     );
   }
 
-  finish(gameId: string, questionsPlayed: number, results: FinalPlayerResult[], scores: Map<string, number>): void {
+  finish(gameId: string, questionsPlayed: number, results: FinalPlayerResult[], scores: Map<string, number>, presenceLog: PresenceEvent[] = []): void {
     this.db.transaction(() => {
       this.db.run(
-        `UPDATE game_sessions SET status = 'ended', questions_played = ?,
+        `UPDATE game_sessions SET status = 'ended', questions_played = ?, presence_log = ?,
            ended_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
         questionsPlayed,
+        JSON.stringify(presenceLog),
         gameId,
       );
       for (const [playerId, score] of scores) this.db.run('UPDATE players SET score = ? WHERE id = ?', score, playerId);
       for (const r of results) {
         this.db.run(
-          `INSERT OR REPLACE INTO game_results (game_id, player_id, rank, score, correct_count, answered_count, avg_response_ms)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO game_results (game_id, player_id, rank, score, correct_count, answered_count, avg_response_ms, exits, away_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           gameId,
           r.playerId,
           r.rank,
@@ -159,6 +174,8 @@ export class GameRepository {
           r.correctCount,
           r.answeredCount,
           r.avgResponseMs,
+          r.exits,
+          r.awayMs,
         );
       }
     });
@@ -233,6 +250,8 @@ export class GameRepository {
         correct_count: number;
         answered_count: number;
         avg_response_ms: number | null;
+        exits: number;
+        away_ms: number;
       }>(
         `SELECT r.*, p.nickname FROM game_results r JOIN players p ON p.id = r.player_id
          WHERE r.game_id = ? ORDER BY r.rank, p.nickname`,
@@ -246,6 +265,8 @@ export class GameRepository {
         correctCount: r.correct_count,
         answeredCount: r.answered_count,
         avgResponseMs: r.avg_response_ms,
+        exits: r.exits,
+        awayMs: r.away_ms,
       }));
 
     const perQuestion = this.db.all<{ question_index: number; answered: number; correct: number; avg_ms: number | null }>(
@@ -278,9 +299,10 @@ export class GameRepository {
 
     return {
       game,
-      settings: JSON.parse(row.settings) as GameSettings,
+      settings: { ...DEFAULT_GAME_SETTINGS, presenceWatch: false, ...(JSON.parse(row.settings) as Partial<GameSettings>) },
       players,
       questions,
+      presenceLog: parsePresenceLog(row.presence_log),
       totals: {
         successRate: game.successRate ?? 0,
         answerCount,

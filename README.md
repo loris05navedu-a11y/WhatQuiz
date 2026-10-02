@@ -413,6 +413,41 @@ joueur. Les élèves fictifs répondent avec un délai et une justesse aléatoir
 Les parties vivent en mémoire : si le serveur redémarre, les parties en cours sont marquées « annulées ».
 Une partie terminée reste consultable 30 minutes par les élèves, ses résultats restent en base.
 
+### Surveillance des sorties (anti-triche)
+
+Activée par défaut au lancement d'une partie (« Me prévenir quand un élève quitte la partie »), elle
+fonctionne de la même façon avec le serveur Termux et en mode GitHub Pages (pair-à-pair). Seuls les
+élèves sont surveillés, jamais le professeur, et ils en sont informés dans la salle d'attente.
+
+Trois sources de détection, combinées :
+
+1. **Le navigateur de l'élève** signale toute sortie : onglet changé ou application en arrière-plan
+   (`visibilitychange`), page fermée ou rechargée (`pagehide`), autre fenêtre au premier plan (`blur`,
+   après 1,2 s de grâce pour ignorer menus et listes déroulantes), page gelée par le système (`freeze`).
+2. **L'application Android (APK 1.2)** transmet ce que voit le système : bouton Accueil ou applis
+   récentes (`onUserLeaveHint`), application en pause ou masquée, volet de notifications ou fenêtre
+   par-dessus (`onWindowFocusChanged`), écran partagé (`onMultiWindowModeChanged`), écran éteint.
+   Pendant une partie surveillée, l'APK garde l'écran allumé (pas de fausse sortie par mise en veille),
+   bloque les captures d'écran, refuse l'écran partagé (Android 7 à 11) et peut **épingler
+   l'application** (option du professeur) : l'élève ne peut plus en sortir sans le geste système, et
+   tout désépinglage est signalé. L'inspection à distance de la page (outils de développement) est désactivée.
+3. **L'hôte de la partie** (serveur ou appareil du professeur) attend un signe de vie toutes les 2 s.
+   Sans nouvelles pendant 6 s, l'élève est déclaré **injoignable**, même si son appareil n'a rien pu
+   envoyer (application tuée, téléphone verrouillé, réseau coupé, page figée).
+
+Les heures et les durées sont **toujours mesurées par l'hôte**, jamais par l'appareil de l'élève ; les
+signaux sont validés (format strict, débit limité) et un élève ne peut ni annoncer une durée ni effacer
+une sortie. Côté professeur : bandeau rouge au nom de l'élève dès sa sortie (avec durée en direct),
+son d'alerte synthétisé, pastille « N hors partie », panneau détaillé (état de chaque élève, nombre de
+sorties, temps passé dehors, appareil, épinglage) et journal horodaté. Bandeaux et son se désactivent
+si l'écran est projeté. Côté élève : au retour, un écran bloquant « Tu as quitté la partie — ton
+professeur a été prévenu ». Le bilan (sorties et temps dehors par élève + journal) est enregistré avec
+les résultats et exporté dans le CSV.
+
+Limites (honnêtement) : aucune page web ne voit un **second appareil** posé à côté ; dans un
+navigateur, un élève très averti pourrait modifier la page qu'il exécute. L'APK, avec l'épinglage,
+est la solution la plus sûre.
+
 ---
 
 ## API REST
@@ -514,6 +549,8 @@ s'ouvre directement sur le site.
 - Les exports (CSV des résultats, fichiers de quiz) sont enregistrés dans **Téléchargements/WhatQuiz**.
 - Le choix d'images (galerie/appareil photo) et l'import de fichiers passent par le sélecteur Android.
 - Les nouveautés du site arrivent sans réinstaller l'APK : il suffit de redéployer GitHub Pages.
+- Depuis la version 1.2, l'APK transmet les signaux du système à la surveillance des sorties (voir
+  « Surveillance des sorties ») : réinstallez-la sur les appareils des élèves pour en profiter.
 - Seul le trafic HTTPS est autorisé.
 
 Installer l'APK : copiez `WhatQuiz.apk` sur le téléphone, ouvrez-le et autorisez l'installation

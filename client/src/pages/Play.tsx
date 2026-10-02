@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { ERRORS, REACTIONS } from '../../../shared/constants';
 import type { PlayerView, SubmittedAnswer } from '../../../shared/types';
@@ -16,6 +16,9 @@ import { QuestionMeta, QuestionStatement } from '../game/QuestionView';
 import { Timer } from '../game/Timer';
 import { usePlayerGame } from '../game/usePlayerGame';
 import { formatNumber, formatRank } from '../lib/format';
+import { formatAwayDuration, type AwayReason } from '../../../shared/presence';
+import { watchPresence, type PresenceWatch } from '../game/presenceWatch';
+import { androidCanPin, androidGameMode, androidPin, isAndroidApp } from '../lib/android';
 
 interface PlayLocationState {
   nickname?: string;
@@ -123,6 +126,11 @@ function PlayerHeader({ view }: { view: PlayerView }) {
       <div className="player-identity">
         <b>{view.me.nickname}</b>
         {view.isTest && <span className="badge badge-warning">Test</span>}
+        {view.presence && view.phase !== 'lobby' && (
+          <span className="presence-badge" title="Partie surveillée : le professeur est prévenu si tu quittes la partie">
+            <Icon name="eye" size={14} /> Surveillée
+          </span>
+        )}
       </div>
       <span className="spacer" />
       {view.questionIndex >= 0 && view.phase !== 'lobby' && view.phase !== 'ended' && (
@@ -138,6 +146,7 @@ function PlayerHeader({ view }: { view: PlayerView }) {
 }
 
 function PlayerScreen({ view, game }: { view: PlayerView; game: Game }) {
+  const guard = usePresenceGuard(view, game);
   return (
     <div className="player-screen">
       <PlayerHeader view={view} />
@@ -145,11 +154,142 @@ function PlayerScreen({ view, game }: { view: PlayerView; game: Game }) {
         <PhaseContent view={view} game={game} />
       </main>
       {view.phase !== 'question' && <ReactionBar onReact={game.react} />}
+      {guard.returned && view.presence && <PresenceReturnOverlay reason={guard.returned} exits={view.presence.exits} awayMs={view.presence.awayMs} onResume={guard.dismiss} />}
+    </div>
+  );
+}
+
+const RUNNING_PHASES = new Set(['ready', 'question', 'reveal']);
+
+/**
+ * Surveillance de présence côté élève : active dès que le professeur l'a demandée. Les sorties sont signalées
+ * à l'hôte ; au retour pendant la partie, un écran bloquant rappelle que le professeur a été prévenu.
+ */
+function usePresenceGuard(view: PlayerView, game: Game) {
+  const [returned, setReturned] = useState<AwayReason | null>(null);
+  const watched = game.status === 'joined' && view.presence !== null;
+  const phaseRef = useRef(view.phase);
+  phaseRef.current = view.phase;
+  const watchRef = useRef<PresenceWatch | null>(null);
+  const { sendPresence } = game;
+
+  useEffect(() => {
+    if (!watched) return;
+    const watch = watchPresence({
+      send: sendPresence,
+      onBack: (reason) => {
+        if (!RUNNING_PHASES.has(phaseRef.current)) return;
+        setReturned(reason);
+        navigator.vibrate?.(250);
+      },
+    });
+    watchRef.current = watch;
+    return () => {
+      watch.stop();
+      watchRef.current = null;
+    };
+  }, [watched, sendPresence]);
+
+  // Après une reconnexion, l'hôte reçoit aussitôt l'état réel de l'élève.
+  useEffect(() => {
+    watchRef.current?.resync();
+  }, [game.session]);
+
+  // Pendant une partie surveillée, l'écran reste allumé : une mise en veille automatique n'est pas une sortie.
+  const guarding = watched && view.phase !== 'ended';
+  useEffect(() => {
+    if (!guarding) return;
+    androidGameMode(true);
+    let lock: WakeLockSentinel | null = null;
+    let released = false;
+    const acquire = () => {
+      if (document.visibilityState !== 'visible' || !('wakeLock' in navigator)) return;
+      navigator.wakeLock
+        .request('screen')
+        .then((sentinel) => {
+          if (released) void sentinel.release();
+          else lock = sentinel;
+        })
+        .catch(() => undefined);
+    };
+    acquire();
+    document.addEventListener('visibilitychange', acquire);
+    return () => {
+      released = true;
+      document.removeEventListener('visibilitychange', acquire);
+      void lock?.release().catch(() => undefined);
+      androidGameMode(false);
+    };
+  }, [guarding]);
+
+  // Application Android : épinglage de l'écran pendant la partie, si le professeur l'a demandé.
+  const pin = watched && view.presence?.pinApp === true && view.phase !== 'ended' && isAndroidApp() && androidCanPin();
+  useEffect(() => {
+    if (!pin) return;
+    androidPin(true);
+    return () => void androidPin(false);
+  }, [pin]);
+
+  return { returned, dismiss: () => setReturned(null) };
+}
+
+const RETURN_MESSAGES: Record<AwayReason, string> = {
+  hidden: 'Tu as quitté l’onglet ou l’application de la partie.',
+  pagehide: 'Tu as fermé ou rechargé la page de la partie.',
+  blur: 'Tu as ouvert une autre fenêtre.',
+  'app-pause': 'Tu as quitté l’application WhatQuiz.',
+  'app-leave': 'Tu as quitté l’application (bouton Accueil ou applis récentes).',
+  'app-unfocus': 'Tu as ouvert quelque chose par-dessus l’application.',
+  'split-screen': 'Tu as utilisé l’écran partagé avec une autre application.',
+  'screen-off': 'Tu as éteint l’écran pendant la partie.',
+  unpinned: 'Tu as désépinglé l’application.',
+  silent: 'Ton appareil ne répondait plus.',
+  disconnected: 'La connexion avec la partie a été perdue.',
+};
+
+function PresenceReturnOverlay({ reason, exits, awayMs, onResume }: { reason: AwayReason; exits: number; awayMs: number; onResume: () => void }) {
+  return (
+    <div className="presence-return" role="alertdialog" aria-modal="true" aria-labelledby="presence-return-title" aria-describedby="presence-return-text">
+      <div className="presence-return-card animate-in">
+        <div className="presence-return-icon">
+          <Icon name="alert" size={40} />
+        </div>
+        <h1 id="presence-return-title">Tu as quitté la partie</h1>
+        <p id="presence-return-text">{RETURN_MESSAGES[reason]}</p>
+        <p className="presence-return-warning">
+          <Icon name="bell" size={18} /> Ton professeur a été prévenu immédiatement.
+        </p>
+        <p className="presence-return-count">
+          Sorties pendant cette partie : <b>{exits}</b>
+          {awayMs > 0 && <> · temps hors de la partie : <b>{formatAwayDuration(awayMs)}</b></>}
+        </p>
+        <Button variant="primary" size="lg" block icon="play" onClick={onResume} autoFocus>
+          Je reviens à la partie
+        </Button>
+      </div>
     </div>
   );
 }
 
 const REACTION_COOLDOWN_MS = 700;
+
+/** Information donnée à l'élève avant la partie : la surveillance n'est jamais cachée. */
+function PresenceNotice({ pinApp }: { pinApp: boolean }) {
+  const app = isAndroidApp();
+  return (
+    <div className="presence-notice" role="note">
+      <Icon name="eye" size={22} />
+      <div>
+        <b>Partie surveillée</b>
+        <p>
+          Reste dans {app ? 'l’application' : 'cette page'} pendant toute la partie. Si tu changes d’onglet, ouvres une autre application ou fermes la page, ton
+          professeur est prévenu immédiatement.
+        </p>
+        {pinApp && app && <p>L’application va être épinglée à l’écran : accepte l’épinglage pour participer.</p>}
+      </div>
+    </div>
+  );
+}
 
 function ReactionBar({ onReact }: { onReact: (emoji: string) => void }) {
   const [sent, setSent] = useState<string | null>(null);
@@ -187,6 +327,7 @@ function PhaseContent({ view, game }: { view: PlayerView; game: Game }) {
             <span />
           </p>
           <p className="muted-inverse">{view.playerCount} joueur{view.playerCount > 1 ? 's' : ''} connecté{view.playerCount > 1 ? 's' : ''}</p>
+          {view.presence && <PresenceNotice pinApp={view.presence.pinApp} />}
         </StageMessage>
       );
     case 'ready':

@@ -145,4 +145,6 @@ export const DEFAULT_GAME_SETTINGS = {
   autoRevealAnswers: true,
   autoAdvance: false,
   maxPlayers: 100,
+  presenceWatch: true,
+  pinApp: false,
 } as const;

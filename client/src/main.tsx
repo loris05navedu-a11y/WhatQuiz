@@ -8,6 +8,7 @@ import './styles/game.css';
 import './styles/types.css';
 import './styles/editor.css';
 import './styles/bank.css';
+import './styles/presence.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

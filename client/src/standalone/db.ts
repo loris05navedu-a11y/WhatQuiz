@@ -1,3 +1,4 @@
+import type { PresenceEvent } from '../../../shared/presence';
 import type { FinalPlayerResult, QuizSnapshot } from '../../../server/src/db/games';
 import type { RoomStore } from '../../../server/src/game/GameRoom';
 import type { DocStore, StoredDoc } from '../../../shared/documents';
@@ -60,6 +61,7 @@ export interface LocalGame {
   players: LocalPlayer[];
   answers: LocalAnswer[];
   results: FinalPlayerResult[];
+  presenceLog?: PresenceEvent[];
 }
 
 export interface LocalHistory extends StudentHistoryEntry {
@@ -331,13 +333,14 @@ export const gameStore: RoomStore & {
       else g.answers.push(answer);
     });
   },
-  finish(id, questionsPlayed, results, scores) {
+  finish(id, questionsPlayed, results, scores, presenceLog = []) {
     updateGame(id, (g) => {
       g.status = 'ended';
       g.questionsPlayed = questionsPlayed;
       g.endedAt = nowIso();
       for (const player of g.players) player.score = scores.get(player.id) ?? player.score;
       g.results = results;
+      g.presenceLog = presenceLog;
     });
   },
   abort(id) {

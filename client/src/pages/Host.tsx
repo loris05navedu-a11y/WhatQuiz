@@ -17,6 +17,8 @@ import { QuestionMeta, QuestionStatement } from '../game/QuestionView';
 import { Explanation, HostQuestionBody, HostReveal } from '../questionTypes/results';
 import { Timer } from '../game/Timer';
 import { useHostGame, type FloatingReaction } from '../game/useHostGame';
+import { PresenceAlertStack, PresenceChip, PresencePanel, useHostNow, usePresenceAlerts, usePresencePrefs } from '../game/PresenceMonitor';
+import { PRESENCE_REASON_LABELS, PRESENCE_STATE_LABELS } from '../../../shared/presence';
 import { readStorage, writeStorage } from '../lib/storage';
 import { SEPARATE_BACKEND, siteOrigin, STANDALONE } from '../lib/backend';
 import { formatNumber, formatPercent } from '../lib/format';
@@ -29,6 +31,7 @@ export function HostPage() {
   const [reactionsShown, setReactionsShown] = useState(() => readStorage('local', 'wq:reactions') !== 'off');
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [presenceOpen, setPresenceOpen] = useState(false);
   useKeepHostAlive(STANDALONE && view !== null && view.phase !== 'ended');
 
   const act = useCallback<Act>(
@@ -76,8 +79,10 @@ export function HostPage() {
           <Icon name="wifiOff" /> {ERRORS.connectionLost} — reconnexion…
         </div>
       )}
+      <HostPresence view={view} act={act} clockOffset={clockOffset} open={presenceOpen} onOpen={() => setPresenceOpen(true)} onClose={() => setPresenceOpen(false)} />
       <HostHeader
         view={view}
+        onOpenPresence={() => setPresenceOpen(true)}
         act={act}
         reactionsShown={reactionsShown}
         onToggleReactions={() =>
@@ -130,6 +135,30 @@ function useKeepHostAlive(active: boolean) {
   }, [active]);
 }
 
+/* ───────────── Surveillance des sorties ───────────── */
+
+interface HostPresenceProps {
+  view: HostView;
+  act: Act;
+  clockOffset: number;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+}
+
+/** Alertes en direct quand un élève quitte la partie, et panneau de surveillance détaillé. */
+function HostPresence({ view, act, clockOffset, open, onOpen, onClose }: HostPresenceProps) {
+  const [prefs, setPrefs] = usePresencePrefs();
+  const alerts = usePresenceAlerts(view, prefs);
+  const now = useHostNow(clockOffset, alerts.length > 0 || open);
+  return (
+    <>
+      {prefs.banners && view.settings.presenceWatch && !open && <PresenceAlertStack alerts={alerts} now={now} onOpen={onOpen} />}
+      {open && <PresencePanel view={view} now={now} prefs={prefs} onPrefs={setPrefs} act={act} onClose={onClose} />}
+    </>
+  );
+}
+
 /* ───────────── En-tête et panneaux ───────────── */
 
 function ReactionLayer({ reactions }: { reactions: FloatingReaction[] }) {
@@ -148,11 +177,12 @@ function ReactionLayer({ reactions }: { reactions: FloatingReaction[] }) {
 interface HostHeaderProps {
   view: HostView;
   act: Act;
+  onOpenPresence: () => void;
   reactionsShown: boolean;
   onToggleReactions: () => void;
 }
 
-function HostHeader({ view, act, reactionsShown, onToggleReactions }: HostHeaderProps) {
+function HostHeader({ view, act, onOpenPresence, reactionsShown, onToggleReactions }: HostHeaderProps) {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const [panel, setPanel] = useState<'players' | 'settings' | null>(null);
@@ -193,6 +223,7 @@ function HostHeader({ view, act, reactionsShown, onToggleReactions }: HostHeader
           Code <b>{view.code}</b>
         </span>
       )}
+      <PresenceChip view={view} onClick={onOpenPresence} />
       <Button variant="ghost" className="btn-inverse" icon="users" onClick={() => setPanel('players')} aria-label="Joueurs">
         {view.players.length}
       </Button>
@@ -251,6 +282,17 @@ function PlayersPanel({ view, act, onClose }: { view: HostView; act: Act; onClos
                   <span className={`status-dot${player.connected ? ' on' : ''}`} aria-label={player.connected ? 'connecté' : 'déconnecté'} />
                   <span className="player-list-name">
                     {player.nickname} {player.isBot && <Icon name="bot" size={14} aria-label="élève fictif" />}
+                    {!player.isBot && player.presence.state !== 'present' && (
+                      <span className={`presence-state is-${player.presence.state}`} title={player.presence.reason ? PRESENCE_REASON_LABELS[player.presence.reason] : undefined}>
+                        {PRESENCE_STATE_LABELS[player.presence.state]}
+                      </span>
+                    )}
+                    {player.presence.exits > 0 && (
+                      <span className="muted small">
+                        {' '}
+                        · {player.presence.exits} sortie{player.presence.exits > 1 ? 's' : ''}
+                      </span>
+                    )}
                   </span>
                   <span className="muted small">{formatNumber(player.score)} pts</span>
                   {view.phase !== 'ended' && (
