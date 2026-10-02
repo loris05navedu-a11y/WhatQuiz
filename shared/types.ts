@@ -144,6 +144,37 @@ export interface QuizVersionSummary {
   reason: 'save' | 'autosave' | 'restore';
 }
 
+/* ───────────── Banque de questions ───────────── */
+export interface BankFolder {
+  id: string;
+  name: string;
+  /** Dossier parent (null : à la racine). */
+  parentId: string | null;
+  createdAt: string;
+}
+
+export interface BankQuestion {
+  id: string;
+  question: QuestionInput;
+  folderId: string | null;
+  tags: string[];
+  difficulty: Difficulty | null;
+  /** Titre du quiz d'origine, si la question en vient. */
+  source: string;
+  /** Nombre de fois où la question a été ajoutée à un quiz. */
+  usage: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Champs modifiables d'une question de la banque. */
+export interface BankQuestionPatch {
+  question?: QuestionInput;
+  folderId?: string | null;
+  tags?: string[];
+  difficulty?: Difficulty | null;
+}
+
 /* ───────────── Parties ───────────── */
 
 export type ScoringMode = 'speed' | 'fixed' | 'none';

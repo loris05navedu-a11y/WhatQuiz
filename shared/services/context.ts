@@ -1,5 +1,5 @@
 import type { DocStore } from '../documents';
-import type { PublicUser, Quiz, QuizInput } from '../types';
+import type { PublicUser, QuestionInput, Quiz, QuizInput } from '../types';
 
 /** Accès aux quiz depuis les services partagés (implémenté par le serveur et par le mode sans serveur). */
 export interface QuizGateway {
@@ -16,6 +16,8 @@ export interface ServiceContext {
   query: Record<string, string>;
   docs: DocStore;
   quizzes: QuizGateway;
+  /** Valide un lot de questions (règles du serveur ou du mode sans serveur pour les médias) ; lève une erreur 400. */
+  parseQuestions(raw: unknown): QuestionInput[];
   now(): Date;
 }
 

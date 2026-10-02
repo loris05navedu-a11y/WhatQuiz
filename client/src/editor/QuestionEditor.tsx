@@ -17,34 +17,45 @@ const formatTime = (t: number) => (t < 60 ? `${t} s` : t % 60 === 0 ? `${t / 60}
 
 interface QuestionEditorProps {
   question: DraftQuestion;
-  index: number;
-  total: number;
   onChange: (question: DraftQuestion) => void;
-  onMove: (delta: -1 | 1) => void;
-  onDuplicate: () => void;
+  /** Titre affiché (par défaut « Question n »). */
+  heading?: string;
+  index?: number;
+  total?: number;
+  /** Les actions absentes ne sont pas proposées (ex. : édition d'une question de la banque). */
+  onMove?: (delta: -1 | 1) => void;
+  onDuplicate?: () => void;
   /** Copie la question dans le presse-papiers de l'éditeur (collable dans un autre quiz). */
   onCopy?: () => void;
-  onDelete: () => void;
-  onPreview: () => void;
+  onSaveToBank?: () => void;
+  onDelete?: () => void;
+  onPreview?: () => void;
 }
 
-export function QuestionEditor({ question, index, total, onChange, onMove, onDuplicate, onCopy, onDelete, onPreview }: QuestionEditorProps) {
+export function QuestionEditor({ question, onChange, heading, index = 0, total = 1, onMove, onDuplicate, onCopy, onSaveToBank, onDelete, onPreview }: QuestionEditorProps) {
   const problem = questionProblem(question);
   const update = (patch: Partial<DraftQuestion>) => onChange({ ...question, ...patch });
 
   return (
     <div className="question-editor animate-in" key={question.key}>
       <div className="editor-toolbar">
-        <h2 className="editor-heading">Question {index + 1}</h2>
+        <h2 className="editor-heading">{heading ?? `Question ${index + 1}`}</h2>
         <span className="spacer" />
-        <Button size="sm" variant="ghost" icon="chevronUp" aria-label="Monter la question" disabled={index === 0} onClick={() => onMove(-1)} />
-        <Button size="sm" variant="ghost" icon="chevronDown" aria-label="Descendre la question" disabled={index === total - 1} onClick={() => onMove(1)} />
-        <Button size="sm" variant="ghost" icon="copy" aria-label="Dupliquer la question" title="Dupliquer" onClick={onDuplicate} />
+        {onMove && (
+          <>
+            <Button size="sm" variant="ghost" icon="chevronUp" aria-label="Monter la question" disabled={index === 0} onClick={() => onMove(-1)} />
+            <Button size="sm" variant="ghost" icon="chevronDown" aria-label="Descendre la question" disabled={index === total - 1} onClick={() => onMove(1)} />
+          </>
+        )}
+        {onDuplicate && <Button size="sm" variant="ghost" icon="copy" aria-label="Dupliquer la question" title="Dupliquer" onClick={onDuplicate} />}
         {onCopy && <Button size="sm" variant="ghost" icon="clipboard" aria-label="Copier la question" title="Copier (Ctrl+C)" onClick={onCopy} />}
-        <Button size="sm" variant="ghost" icon="trash" aria-label="Supprimer la question" title="Supprimer" onClick={onDelete} />
-        <Button size="sm" variant="soft" icon="eye" onClick={onPreview}>
-          Aperçu
-        </Button>
+        {onSaveToBank && <Button size="sm" variant="ghost" icon="folder" aria-label="Ajouter à la banque de questions" title="Ajouter à la banque de questions" onClick={onSaveToBank} />}
+        {onDelete && <Button size="sm" variant="ghost" icon="trash" aria-label="Supprimer la question" title="Supprimer" onClick={onDelete} />}
+        {onPreview && (
+          <Button size="sm" variant="soft" icon="eye" onClick={onPreview}>
+            Aperçu
+          </Button>
+        )}
       </div>
 
       {problem && (

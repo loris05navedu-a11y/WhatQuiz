@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { PublicUser, Quiz, QuizInput, QuizSummary, QuizVersionSummary } from '../../shared/types';
+import type { BankFolder, BankQuestion, PublicUser, Quiz, QuizInput, QuizSummary, QuizVersionSummary } from '../../shared/types';
 import { SAMPLE_QUIZ } from './helpers';
 
 // Stockage du navigateur simulé : le mode sans serveur y garde le compte ouvert.
@@ -84,6 +84,22 @@ describe('mode sans serveur : brouillons, versions et partage', () => {
       mine.quizzes.map((q) => q.title),
       ['Avec code'],
     );
+  });
+
+  it('gère une banque de questions locale (dossiers, quiz depuis la sélection)', async () => {
+    const { folder } = await localApi<{ folder: BankFolder }>('POST', '/bank/folders', { name: 'Géographie' });
+    const { questions } = await localApi<{ questions: BankQuestion[] }>('POST', '/bank/questions', { questions: SAMPLE_QUIZ.questions, folderId: folder.id });
+    assert.equal(questions.length, 2);
+    await assert.rejects(localApi('POST', '/bank/questions', { questions: [{ ...SAMPLE_QUIZ.questions[0], text: '' }] }), /énoncé/i);
+    const { quiz } = await localApi<{ quiz: Quiz }>('POST', '/bank/quiz', { ids: questions.map((q) => q.id).reverse(), title: 'Depuis la banque' });
+    assert.deepEqual(
+      quiz.questions.map((q) => q.text),
+      ['Capitale de la France ?', '2 + 2 ?'],
+    );
+    await localApi('DELETE', `/bank/folders/${folder.id}`);
+    const bank = await localApi<{ questions: BankQuestion[]; folders: BankFolder[] }>('GET', '/bank');
+    assert.equal(bank.folders.length, 0);
+    assert.ok(bank.questions.every((q) => q.folderId === null && q.usage === 1));
   });
 
   it('ne permet pas à un autre compte de modifier ou de voir les versions du quiz partagé', async () => {

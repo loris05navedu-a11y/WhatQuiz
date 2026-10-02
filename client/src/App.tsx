@@ -24,6 +24,7 @@ const QuizEditor = page(() => import('./pages/QuizEditor'), 'QuizEditorPage');
 const QuizPreview = page(() => import('./pages/QuizPreview'), 'QuizPreviewPage');
 const Launch = page(() => import('./pages/Launch'), 'LaunchPage');
 const Results = page(() => import('./pages/Results'), 'ResultsPage');
+const QuestionBank = page(() => import('./pages/QuestionBank'), 'QuestionBankPage');
 const Library = page(() => import('./pages/Library'), 'LibraryPage');
 const History = page(() => import('./pages/History'), 'HistoryPage');
 const Settings = page(() => import('./pages/Settings'), 'SettingsPage');
@@ -67,6 +68,7 @@ const router = createBrowserRouter([
                   { path: '/dashboard', element: <Dashboard /> },
                   { path: '/history', element: <History /> },
                   { path: '/library', element: <Library /> },
+                  { path: '/bank', element: <QuestionBank /> },
                   { path: '/quizzes/new', element: <QuizEditor /> },
                   { path: '/quizzes/:id/edit', element: <QuizEditor /> },
                   { path: '/quizzes/:id/preview', element: <QuizPreview /> },

@@ -2,11 +2,18 @@ import { Suspense } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { Button, LinkButton, PageLoader } from './Button';
-import { Icon } from './Icon';
+import { Icon, type IconName } from './Icon';
 import { Logo } from './Logo';
 import { Menu } from './Menu';
 import { ThemeToggle } from './ThemeToggle';
 import { FURIOUS_TUBE_URL } from '../lib/backend';
+
+/** Lien de navigation : le libellé disparaît sur les écrans moyens (l'icône et l'infobulle restent). */
+const navItem = (to: string, icon: IconName, label: string) => (
+  <NavLink to={to} title={label} aria-label={label}>
+    <Icon name={icon} size={18} /> <span className="topnav-label">{label}</span>
+  </NavLink>
+);
 
 export function AppShell() {
   const { user, logout } = useAuth();
@@ -35,31 +42,24 @@ export function AppShell() {
           <nav className="topnav hide-mobile" aria-label="Navigation principale">
             {isTeacher ? (
               <>
-                <NavLink to="/dashboard">
-                  <Icon name="home" size={18} /> Tableau de bord
-                </NavLink>
-                <NavLink to="/library">
-                  <Icon name="book" size={18} /> Bibliothèque
-                </NavLink>
-                <NavLink to="/history">
-                  <Icon name="history" size={18} /> Historique
-                </NavLink>
+                {navItem('/dashboard', 'home', 'Tableau de bord')}
+                {navItem('/bank', 'folder', 'Banque')}
+                {navItem('/library', 'book', 'Bibliothèque')}
+                {navItem('/history', 'history', 'Historique')}
               </>
             ) : (
-              <NavLink to="/me">
-                <Icon name="home" size={18} /> Accueil
-              </NavLink>
+              navItem('/me', 'home', 'Accueil')
             )}
           </nav>
           <span className="spacer" />
-          <LinkButton to="/join" variant="soft" size="sm" icon="play" className="hide-tablet">
+          <LinkButton to="/join" variant="soft" size="sm" icon="play" className={`hide-tablet${isTeacher ? ' topbar-join' : ''}`}>
             Rejoindre
           </LinkButton>
           <ThemeToggle />
           <Menu
             trigger={(props) => (
               <Button variant="ghost" icon="user" aria-label="Menu du compte" {...props}>
-                <span className="hide-tablet" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span className={`hide-tablet${isTeacher ? ' topbar-account-name' : ''}`} style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {user?.displayName}
                 </span>
               </Button>
@@ -72,6 +72,9 @@ export function AppShell() {
                   <>
                     <Link role="menuitem" className="menu-item show-mobile" to="/dashboard" onClick={close}>
                       <Icon name="home" /> Tableau de bord
+                    </Link>
+                    <Link role="menuitem" className="menu-item show-mobile" to="/bank" onClick={close}>
+                      <Icon name="folder" /> Banque de questions
                     </Link>
                     <Link role="menuitem" className="menu-item show-mobile" to="/library" onClick={close}>
                       <Icon name="book" /> Bibliothèque

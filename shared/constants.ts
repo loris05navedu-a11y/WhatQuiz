@@ -56,6 +56,10 @@ export const LIMITS = {
   explanation: 500,
   wordcloudAnswer: 30,
   unit: 15,
+  bankQuestions: 2000,
+  bankFolders: 100,
+  folderName: 40,
+  folderDepth: 4,
 } as const;
 
 export const CATEGORIES = [

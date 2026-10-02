@@ -1,6 +1,4 @@
-import { useState, type KeyboardEvent } from 'react';
 import { CATEGORIES, DIFFICULTY_LABELS, LIMITS, SCHOOL_LEVELS, SUBCATEGORIES } from '../../../shared/constants';
-import { cleanTags } from '../../../shared/quizMeta';
 import type { Difficulty, QuizStatus, QuizVisibility } from '../../../shared/types';
 import { Button } from '../components/Button';
 import { Segmented, TextAreaField, TextField } from '../components/Form';
@@ -9,6 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { STANDALONE } from '../lib/backend';
 import type { DraftQuiz } from './draft';
 import { ImagePicker } from './ImagePicker';
+import { TagsInput } from './TagsInput';
 
 interface QuizSettingsPanelProps {
   draft: DraftQuiz;
@@ -149,49 +148,6 @@ export function QuizSettingsPanel({ draft, accessCode, onChange }: QuizSettingsP
               <span className="muted">Le code d’accès sera attribué à l’enregistrement.</span>
             )}
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TagsInput({ tags, onChange }: { tags: string[]; onChange: (tags: string[]) => void }) {
-  const [text, setText] = useState('');
-  const add = () => {
-    if (!text.trim()) return;
-    onChange(cleanTags([...tags, ...text.split(',')]));
-    setText('');
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter' || event.key === ',') {
-      event.preventDefault();
-      add();
-    } else if (event.key === 'Backspace' && !text && tags.length) onChange(tags.slice(0, -1));
-  };
-  return (
-    <div className="field">
-      <label className="field-label" htmlFor="quiz-tags">
-        Tags
-      </label>
-      <div className="tags-input">
-        {tags.map((tag) => (
-          <span key={tag} className="tag-chip">
-            #{tag}
-            <button type="button" aria-label={`Retirer le tag ${tag}`} onClick={() => onChange(tags.filter((t) => t !== tag))}>
-              <Icon name="x" size={14} />
-            </button>
-          </span>
-        ))}
-        {tags.length < LIMITS.tagsPerQuiz && (
-          <input
-            id="quiz-tags"
-            value={text}
-            maxLength={LIMITS.tag}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={onKeyDown}
-            onBlur={add}
-            placeholder={tags.length ? '' : 'Ex. : révision, chapitre 3 (Entrée pour valider)'}
-          />
         )}
       </div>
     </div>

@@ -89,19 +89,24 @@ export function fromInput(input: QuizInput): DraftQuiz {
   return { ...input, questions: input.questions.map((question) => ({ explanation: '', bonus: false, media: [], ...question, key: newKey() })) };
 }
 
+/** Question nettoyée, prête à être enregistrée (quiz ou banque de questions). */
+export function questionToInput({ key: _key, ...question }: DraftQuestion): QuestionInput {
+  return normalizeQuestion({
+    ...question,
+    text: question.text.trim(),
+    explanation: (question.explanation ?? '').trim(),
+    answers: question.answers.map((a) => ({ ...a, text: a.text.trim(), ...(a.match !== undefined ? { match: a.match.trim() } : {}) })),
+  });
+}
+
+export const questionToDraft = (question: QuestionInput): DraftQuestion => ({ ...structuredClone(question), key: newKey() });
+
 export function toInput(draft: DraftQuiz): QuizInput {
   return {
     ...draft,
     title: draft.title.trim(),
     description: draft.description.trim(),
     category: draft.category.trim(),
-    questions: draft.questions.map(({ key: _key, ...question }) =>
-      normalizeQuestion({
-        ...question,
-        text: question.text.trim(),
-        explanation: (question.explanation ?? '').trim(),
-        answers: question.answers.map((a) => ({ ...a, text: a.text.trim(), ...(a.match !== undefined ? { match: a.match.trim() } : {}) })),
-      }),
-    ),
+    questions: draft.questions.map(questionToInput),
   };
 }

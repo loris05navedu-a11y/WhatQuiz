@@ -5,7 +5,7 @@ import { DIFFICULTY_LABELS } from '../../../shared/constants';
 import { normalizeText } from '../../../shared/text';
 import type { DashboardStats, QuizStatus, QuizSummary, QuizVisibility } from '../../../shared/types';
 import { errorMessage } from '../api/client';
-import { gameApi, quizApi, type ActiveGame } from '../api/endpoints';
+import { bankApi, gameApi, quizApi, type ActiveGame } from '../api/endpoints';
 import { Button, LinkButton, PageLoader } from '../components/Button';
 import { EmptyState } from '../components/EmptyState';
 import { Icon, type IconName } from '../components/Icon';
@@ -285,6 +285,16 @@ function QuizCard({ quiz, onChanged }: { quiz: QuizSummary; onChanged: () => voi
     }
   };
 
+  const addToBank = async () => {
+    try {
+      const { questions, skipped } = await bankApi.addFromQuiz(quiz.id);
+      toast.success(`${plural(questions.length, 'question ajoutée', 'questions ajoutées')} à la banque`);
+      if (skipped > 0) toast.error(`${plural(skipped, 'question incomplète ignorée', 'questions incomplètes ignorées')}`);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  };
+
   const exportFile = async () => {
     try {
       await exportQuiz(quiz.id);
@@ -357,6 +367,9 @@ function QuizCard({ quiz, onChanged }: { quiz: QuizSummary; onChanged: () => voi
             <>
               <button role="menuitem" className="menu-item" onClick={() => (close(), duplicate())}>
                 <Icon name="copy" /> Dupliquer
+              </button>
+              <button role="menuitem" className="menu-item" disabled={empty} onClick={() => (close(), addToBank())}>
+                <Icon name="folder" /> Ajouter à la banque
               </button>
               <button role="menuitem" className="menu-item" onClick={() => (close(), exportFile())}>
                 <Icon name="download" /> Exporter (fichier)

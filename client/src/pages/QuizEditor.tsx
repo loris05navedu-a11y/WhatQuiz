@@ -14,7 +14,8 @@ import { Modal } from '../components/Modal';
 import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
 import { copyQuestions, pasteQuestions } from '../editor/clipboard';
-import { createQuestion, fromInput, newKey, toDraft, toInput, type DraftQuestion, type DraftQuiz } from '../editor/draft';
+import { BankPicker, SaveToBankModal } from '../bank/BankModals';
+import { createQuestion, fromInput, newKey, questionToDraft, questionToInput, toDraft, toInput, type DraftQuestion, type DraftQuiz } from '../editor/draft';
 import { QuestionEditor, TYPE_ICONS } from '../editor/QuestionEditor';
 import { QuestionPreview } from '../editor/QuestionPreview';
 import { QuizSettingsPanel } from '../editor/QuizSettingsPanel';
@@ -69,6 +70,8 @@ export function QuizEditorPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [search, setSearch] = useState('');
   const [backup, setBackup] = useState<Backup | null>(null);
+  const [bankSaving, setBankSaving] = useState<QuestionInput | null>(null);
+  const [bankPicking, setBankPicking] = useState(false);
 
   // La version enregistrée correspond-elle encore au brouillon affiché ?
   const savedDraft = useRef<DraftQuiz | null>(null);
@@ -246,6 +249,20 @@ export function QuizEditorPage() {
     insertQuestions(pasted.map((question) => ({ ...question, key: newKey() })));
     toast.success(`${pasted.length} question${pasted.length > 1 ? 's' : ''} collée${pasted.length > 1 ? 's' : ''}`);
   }, [insertQuestions, toast]);
+
+  const saveToBank = () => {
+    if (!current) return;
+    const question = questionToInput(current);
+    const problem = questionProblem(question);
+    if (problem) return toast.error(`Complétez la question avant de l’ajouter à la banque : ${problem}`);
+    setBankSaving(question);
+  };
+
+  const insertFromBank = (picked: QuestionInput[]) => {
+    insertQuestions(picked.map(questionToDraft));
+    setBankPicking(false);
+    toast.success(`${picked.length} question${picked.length > 1 ? 's' : ''} insérée${picked.length > 1 ? 's' : ''} depuis la banque`);
+  };
 
   const deleteQuestion = async () => {
     if (!current) return;
@@ -453,6 +470,9 @@ export function QuizEditorPage() {
           <Button variant="soft" icon="plus" block onClick={() => setAdding(true)} disabled={questions.length >= LIMITS.questionsPerQuiz}>
             Ajouter une question
           </Button>
+          <Button variant="ghost" icon="folder" block onClick={() => setBankPicking(true)} disabled={questions.length >= LIMITS.questionsPerQuiz}>
+            Depuis la banque
+          </Button>
           <Button variant="ghost" icon="text" block onClick={() => setImportingText(true)} disabled={questions.length >= LIMITS.questionsPerQuiz}>
             Importer depuis un texte
           </Button>
@@ -468,6 +488,7 @@ export function QuizEditorPage() {
               onMove={moveQuestion}
               onDuplicate={duplicateQuestion}
               onCopy={() => void copyCurrent()}
+              onSaveToBank={saveToBank}
               onDelete={deleteQuestion}
               onPreview={() => setPreview(current)}
             />
@@ -514,6 +535,10 @@ export function QuizEditorPage() {
         </Modal>
       )}
 
+      {bankSaving && <SaveToBankModal question={bankSaving} source={draft.title.trim()} onClose={() => setBankSaving(null)} />}
+
+      {bankPicking && <BankPicker remaining={LIMITS.questionsPerQuiz - questions.length} onClose={() => setBankPicking(false)} onInsert={insertFromBank} />}
+
       {showHistory && quizId && (
         <VersionHistory
           quizId={quizId}
@@ -536,6 +561,8 @@ function VersionHistory({ quizId, onClose, onRestore }: { quizId: number; onClos
   const toast = useToast();
   const [versions, setVersions] = useState<QuizVersionSummary[] | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     quizApi
@@ -543,9 +570,9 @@ function VersionHistory({ quizId, onClose, onRestore }: { quizId: number; onClos
       .then(({ versions: list }) => setVersions(list))
       .catch((error: unknown) => {
         toast.error(errorMessage(error));
-        onClose();
+        closeRef.current();
       });
-  }, [quizId, toast, onClose]);
+  }, [quizId, toast]);
 
   const restore = async (version: QuizVersionSummary) => {
     setLoading(version.id);

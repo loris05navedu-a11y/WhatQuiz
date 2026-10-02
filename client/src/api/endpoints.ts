@@ -1,5 +1,10 @@
 import type {
+  BankFolder,
+  BankQuestion,
+  BankQuestionPatch,
   DashboardStats,
+  Difficulty,
+  QuestionInput,
   GameResults,
   GameSettings,
   GameSummary,
@@ -77,6 +82,30 @@ export const quizApi = {
   remove: (id: number) => api<{ ok: true }>('DELETE', `/quizzes/${id}`),
   duplicate: (id: number) => api<{ quiz: Quiz }>('POST', `/quizzes/${id}/duplicate`),
   addDemo: () => api<{ quiz: Quiz }>('POST', '/quizzes/demo'),
+};
+
+export interface BankAddOptions {
+  folderId?: string | null;
+  tags?: string[];
+  difficulty?: Difficulty | null;
+  source?: string;
+}
+
+export const bankApi = {
+  list: () => api<{ questions: BankQuestion[]; folders: BankFolder[] }>('GET', '/bank'),
+  add: (questions: QuestionInput[], options: BankAddOptions = {}) => api<{ questions: BankQuestion[] }>('POST', '/bank/questions', { questions, ...options }),
+  addFromQuiz: (quizId: number, options: { folderId?: string | null } = {}) =>
+    api<{ questions: BankQuestion[]; skipped: number }>('POST', `/bank/from-quiz/${quizId}`, options),
+  update: (id: string, patch: BankQuestionPatch) => api<{ question: BankQuestion }>('PUT', `/bank/questions/${id}`, patch),
+  remove: (id: string) => api<{ ok: true }>('DELETE', `/bank/questions/${id}`),
+  move: (ids: string[], folderId: string | null) => api<{ count: number }>('POST', '/bank/bulk', { action: 'move', ids, folderId }),
+  tag: (ids: string[], tags: string[]) => api<{ count: number }>('POST', '/bank/bulk', { action: 'tag', ids, tags }),
+  removeMany: (ids: string[]) => api<{ count: number }>('POST', '/bank/bulk', { action: 'delete', ids }),
+  use: (ids: string[]) => api<{ questions: QuestionInput[] }>('POST', '/bank/use', { ids }),
+  createQuiz: (ids: string[], title: string) => api<{ quiz: Quiz }>('POST', '/bank/quiz', { ids, title }),
+  createFolder: (name: string, parentId: string | null) => api<{ folder: BankFolder }>('POST', '/bank/folders', { name, parentId }),
+  updateFolder: (id: string, patch: { name?: string; parentId?: string | null }) => api<{ folder: BankFolder }>('PUT', `/bank/folders/${id}`, patch),
+  removeFolder: (id: string) => api<{ ok: true }>('DELETE', `/bank/folders/${id}`),
 };
 
 export const gameApi = {

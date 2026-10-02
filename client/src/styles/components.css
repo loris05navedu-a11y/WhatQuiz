@@ -731,3 +731,21 @@
   color: #fff;
   font-weight: 600;
 }
+
+/* Barre du haut sur tablette : on retire d'abord les doublons (Rejoindre, nom du compte), puis les libellés. */
+@media (max-width: 1359px) {
+  .topbar-join,
+  .topbar-account-name {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1099px) {
+  .topnav-label {
+    display: none;
+  }
+
+  .topnav a {
+    padding: 0 12px;
+  }
+}

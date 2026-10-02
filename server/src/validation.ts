@@ -76,25 +76,26 @@ const mediaSchema = (allowLocal: boolean) =>
     .refine((items) => items.every((item) => isValidMediaUrl(item, allowLocal)), 'Média invalide')
     .default([]);
 
-const buildQuizSchema = (allowEmbedded: boolean) => {
-  const imageUrl = imageUrlSchema(allowEmbedded);
-  const media = mediaSchema(allowEmbedded);
-  const questionSchema = z
+const buildQuestionSchema = (allowEmbedded: boolean) =>
+  z
     .object({
       type: z.enum(QUESTION_TYPES),
       text: trimmed(LIMITS.questionText),
-      imageUrl,
+      imageUrl: imageUrlSchema(allowEmbedded),
       timeLimit: z.number().int().refine((value) => (TIME_LIMITS as readonly number[]).includes(value), 'Temps limite invalide'),
       points: z.number().int().min(0).max(5000),
       pointsEnabled: z.boolean(),
       answers: z.array(answerSchema).max(LIMITS.maxAcceptedAnswers),
       explanation: trimmed(LIMITS.explanation).default(''),
       bonus: z.boolean().default(false),
-      media,
+      media: mediaSchema(allowEmbedded),
       config: configSchema,
     })
     .transform((question) => normalizeQuestion(question));
 
+const buildQuizSchema = (allowEmbedded: boolean) => {
+  const imageUrl = imageUrlSchema(allowEmbedded);
+  const questionSchema = buildQuestionSchema(allowEmbedded);
   return z
     .object({
       title: trimmed(LIMITS.quizTitle).min(1, 'Le titre du quiz est obligatoire'),
@@ -122,6 +123,13 @@ const buildQuizSchema = (allowEmbedded: boolean) => {
 export const quizSchema = buildQuizSchema(false);
 /** Mode sans serveur : les images sont conservées dans le quiz lui-même. */
 export const embeddedQuizSchema = buildQuizSchema(true);
+
+/** Lot de questions (banque de questions) : `{ questions }` pour que les erreurs indiquent le numéro de la question. */
+const buildQuestionListSchema = (allowEmbedded: boolean) =>
+  z.object({ questions: z.array(buildQuestionSchema(allowEmbedded)).min(1, 'Aucune question').max(100, '100 questions maximum à la fois') });
+
+export const questionListSchema = buildQuestionListSchema(false);
+export const embeddedQuestionListSchema = buildQuestionListSchema(true);
 
 export const gameSettingsSchema = z.object({
   scoringMode: z.enum(['speed', 'fixed', 'none']),

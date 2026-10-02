@@ -11,6 +11,7 @@ import { deleteQuizVersions, recordQuizVersion } from '../../../shared/services/
 import { z } from 'zod';
 import {
   createGameSchema,
+  embeddedQuestionListSchema,
   embeddedQuizSchema,
   firstIssue,
   loginSchema,
@@ -681,6 +682,7 @@ export async function localApi<T>(method: HttpMethod, path: string, body?: unkno
         query,
         docs: localDocStore(d),
         quizzes: localQuizGateway(d),
+        parseQuestions: (raw) => embeddedQuestionListSchema.parse({ questions: raw }).questions,
         now: () => new Date(),
       });
     }
