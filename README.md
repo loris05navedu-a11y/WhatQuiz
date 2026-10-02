@@ -638,10 +638,11 @@ passe** ouvrent le compte sur le site et dans l'application, sur n'importe quel 
   reste allumé (APK 1.2.1) ; gardez l'application ouverte, la partie tourne sur cet appareil.
 
 **À faire une fois dans la console Firebase** (sinon la pastille indique « règles Firestore non publiées ») :
-console.firebase.google.com → projet *furioustube-9d498* → **Firestore Database** → onglet **Règles** → remplacer
-le contenu par celui de `firestore.rules` du dépôt Furious-Tube (il garde la règle de Furious-Tube et ajoute celle de
-WhatQuiz) → **Publier**. Ces règles réservent les données `whatquiz/{uid}` à leur propriétaire : personne d'autre,
-ni un autre compte ni un visiteur, ne peut les lire ou les modifier.
+console.firebase.google.com → projet *furioustube-9d498* → **Firestore Database** → onglet **Règles** → **ajouter**
+le bloc ci-dessous juste avant l'avant-dernière accolade `}` (à l'intérieur de `match /databases/{database}/documents`),
+sans toucher aux règles de Furious-Tube → **Publier**. Le fichier complet est `firestore.rules` du dépôt Furious-Tube.
+Ces règles réservent les données `whatquiz/{uid}` à leur propriétaire : personne d'autre, ni un autre compte ni un
+visiteur, ne peut les lire ou les modifier.
 
 ```
 match /whatquiz/{uid}/{document=**} {
