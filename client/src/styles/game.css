@@ -981,6 +981,25 @@ button.choice:disabled {
   text-align: center;
 }
 
+.lobby-warning {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  max-width: 420px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(245, 158, 11, 0.14);
+  color: #fcd34d;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.lobby-warning svg {
+  flex: none;
+  margin-top: 2px;
+}
+
 .lobby-brand {
   font-size: 1rem;
   font-weight: 900;

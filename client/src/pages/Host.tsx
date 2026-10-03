@@ -21,6 +21,7 @@ import { PresenceAlertStack, PresenceChip, PresencePanel, useHostNow, usePresenc
 import { PRESENCE_REASON_LABELS, PRESENCE_STATE_LABELS } from '../../../shared/presence';
 import { readStorage, writeStorage } from '../lib/storage';
 import { SEPARATE_BACKEND, siteOrigin, STANDALONE } from '../lib/backend';
+import { doorsHealth, onDoorsHealth, type DoorsHealth } from '../standalone/doorsHealth';
 import { androidKeepAwake } from '../lib/android';
 import { formatNumber, formatPercent } from '../lib/format';
 
@@ -403,8 +404,16 @@ function useJoinUrl(): string {
   return base;
 }
 
+/** État des liaisons de la partie (mode sans serveur) : relais en ligne ouvert ou non. */
+function useDoorsHealth(): DoorsHealth {
+  const [health, setHealth] = useState(doorsHealth);
+  useEffect(() => onDoorsHealth(setHealth), []);
+  return health;
+}
+
 function LobbyPhase({ view, act, busy }: PhaseProps) {
   const base = useJoinUrl();
+  const health = useDoorsHealth();
   const confirm = useConfirm();
   const kick = async (id: string, nickname: string) => {
     if (await confirm({ title: `Exclure ${nickname} ?`, confirmLabel: 'Exclure', danger: true })) await act({ type: 'kick', playerId: id });
@@ -427,6 +436,15 @@ function LobbyPhase({ view, act, busy }: PhaseProps) {
           {view.code.slice(3)}
         </p>
         <QrCode value={`${base}/join?code=${view.code}`} label={`QR code pour rejoindre la partie ${view.code}`} />
+        {STANDALONE && !view.isTest && health.relay === false && (
+          <p className="lobby-warning" role="status">
+            <Icon name="alert" size={18} />
+            <span>
+              {health.relayProblem ?? 'Relais en ligne indisponible'}. Seuls les élèves dont l’appareil peut joindre le vôtre directement (souvent :
+              même Wi-Fi) pourront entrer.
+            </span>
+          </p>
+        )}
       </section>
 
       <section className="lobby-players">

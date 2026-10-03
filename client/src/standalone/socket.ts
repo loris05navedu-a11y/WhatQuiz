@@ -8,13 +8,14 @@ type Ack = (result: AckResult<object>) => void;
 interface Link {
   send(event: string, payload: unknown, ack?: Ack): void;
   close(): void;
+  setQuiet?(quiet: boolean): void;
 }
 
 /**
  * Remplaçant de la connexion Socket.IO en mode sans serveur, avec la même interface pour les écrans de jeu :
  * - partie hébergée par cet onglet (professeur, tests) → branchement direct sur le hub ;
- * - sinon (élève) → liaison pair-à-pair vers l'appareil du professeur.
- * Le code du hub et de PeerJS n'est chargé qu'à la première partie.
+ * - sinon (élève) → liaison vers l'appareil du professeur : directe (WebRTC) ou, si elle échoue, par le relais en ligne.
+ * Le code du hub, de PeerJS et du relais n'est chargé qu'à la première partie.
  */
 export class StandaloneSocket {
   private readonly listeners = new Map<string, Set<Listener>>();
@@ -72,14 +73,17 @@ export class StandaloneSocket {
       queueMicrotask(() => this.fire('connect'));
       return;
     }
-    const [{ PeerLink }, { recordPlayedGame }, { setRemoteAssetFetcher }] = await Promise.all([import('./peer'), import('./api'), import('../lib/media')]);
+    const [{ GameLink }, { recordPlayedGame }, { setRemoteAssetFetcher }] = await Promise.all([import('./link'), import('./api'), import('../lib/media')]);
     if (this.closed) return;
-    const link = new PeerLink(this.code, {
+    const link = new GameLink(this.code, {
       onOpen: () => this.fire('connect'),
       onClose: () => this.fire('disconnect'),
       onEvent: (event, payload) => {
         this.fire(event, payload);
-        if (event === 'game:state') void recordPlayedGame(payload as PlayerView);
+        if (event !== 'game:state') return;
+        // Partie terminée : la liaison reste ouverte pour les résultats, sans signes de vie réguliers.
+        link.setQuiet((payload as PlayerView | null)?.phase === 'ended');
+        void recordPlayedGame(payload as PlayerView);
       },
     });
     this.link = link;

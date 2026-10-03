@@ -65,6 +65,12 @@ export const PRESENCE_STATE_LABELS: Record<PresenceState, string> = {
 /** Un signe de vie est attendu toutes les 2 s ; au-delà de 6 s sans nouvelles, l'élève est injoignable. */
 export const PRESENCE_BEAT_MS = 2_000;
 export const PRESENCE_SILENT_MS = 6_000;
+/**
+ * Élève relié par le relais en ligne (appareils qui ne peuvent pas se joindre directement) : chaque message coûte une
+ * écriture en ligne, le signe de vie part donc toutes les 15 s (tout changement d'état part aussitôt).
+ */
+export const RELAY_BEAT_MS = 15_000;
+export const PRESENCE_SILENT_RELAY_MS = 45_000;
 /** Une perte de focus plus courte est ignorée (menus, claviers, boîtes de dialogue du système). */
 export const PRESENCE_BLUR_GRACE_MS = 1_200;
 /** Taille maximale du journal conservé par partie. */

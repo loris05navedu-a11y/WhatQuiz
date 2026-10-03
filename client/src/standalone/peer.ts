@@ -29,9 +29,26 @@ const peerIdFor = (code: string) => PEER_PREFIX + code;
 /** Mêmes données qu'avec Socket.IO (JSON) : sans cela, le format binaire de PeerJS change `undefined` en `null`. */
 const asJson = (value: unknown): unknown => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
 
+/**
+ * Serveurs utilisés pour établir la liaison directe : plusieurs STUN (adresse vue d'Internet) et le TURN public de
+ * PeerJS (relais réseau). Si la liaison directe échoue malgré tout, le relais en ligne prend le relais (voir link.ts).
+ */
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
+];
+
+/** Tests uniquement : serveur PeerJS local « hôte:port » (jamais défini dans le site publié). */
+const LOCAL_PEER_SERVER: string | undefined = import.meta.env.VITE_PEER_SERVER || undefined;
+
 async function createPeer(id?: string): Promise<Peer> {
   const { Peer } = await import('peerjs');
-  return id ? new Peer(id, { debug: 0 }) : new Peer({ debug: 0 });
+  const [host, port] = LOCAL_PEER_SERVER?.split(':') ?? [];
+  const options = LOCAL_PEER_SERVER
+    ? { debug: 0, host, port: Number(port), path: '/', secure: false, config: { iceServers: [] } }
+    : { debug: 0, config: { iceServers: ICE_SERVERS } };
+  return id ? new Peer(id, options) : new Peer(options);
 }
 
 function send(conn: DataConnection, message: Wire): void {
@@ -249,34 +266,4 @@ export class PeerLink {
       void this.start();
     }, delay);
   }
-}
-
-/** Vérifie qu'une partie existe avant de demander le pseudo. */
-export function probeGame(code: string): Promise<{ code: string; quizTitle: string }> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (work: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      link.close();
-      work();
-    };
-    const timer = setTimeout(
-      () => finish(() => reject(new ApiError(0, 'La partie ne répond pas : vérifiez le code et la connexion Internet'))),
-      OPEN_TIMEOUT_MS + 5_000,
-    );
-    const link = new PeerLink(code, {
-      onOpen: () =>
-        link.send('game:check', { code }, (result) =>
-          finish(() => {
-            if (result.ok) resolve(result as unknown as { code: string; quizTitle: string });
-            else reject(new ApiError(404, result.error));
-          }),
-        ),
-      onClose: () => {},
-      onEvent: () => {},
-      onUnavailable: () => finish(() => reject(new ApiError(404, ERRORS.gameNotFound))),
-    });
-  });
 }

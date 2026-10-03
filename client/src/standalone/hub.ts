@@ -11,7 +11,8 @@ import { gameStore } from './db';
 
 /**
  * Serveur de jeu du mode sans serveur : il tourne dans l'onglet du professeur. Les élèves s'y connectent
- * par une « porte » (pair-à-pair WebRTC) ; le professeur et les tests locaux s'y branchent directement.
+ * par une « porte » (liaison directe WebRTC, ou relais en ligne) ; le professeur et les tests locaux s'y branchent
+ * directement.
  * Même logique que server/src/socket : l'hôte fait autorité, les réponses correctes ne quittent jamais cet appareil.
  */
 
@@ -23,7 +24,16 @@ export interface HubClient {
   readonly joinLimiter: RateLimiter;
   readonly reactLimiter: RateLimiter;
   readonly presenceLimiter: RateLimiter;
+  /** Élève relié par le relais en ligne : signes de vie espacés, délai d'acheminement plus long. */
+  readonly slowLink: boolean;
+  /** Aller-retour estimé de la liaison (ms), déduit du temps de réponse pour ne pas pénaliser l'élève. */
+  lagMs(): number;
   deliver(event: string, payload?: unknown): void;
+}
+
+export interface LinkInfo {
+  slowLink?: boolean;
+  lagMs?: () => number;
 }
 
 /** Point d'entrée des élèves distants pour une partie. */
@@ -63,7 +73,8 @@ export class Hub {
   private readonly clients = new Map<string, HubClient>();
   private sweeper: ReturnType<typeof setInterval> | null = null;
 
-  openDoor: DoorOpener = async (code, hub) => (await import('./peer')).openPeerDoor(code, hub);
+  /** Liaison directe (WebRTC) et relais en ligne (Firestore), ouverts ensemble. */
+  openDoor: DoorOpener = async (code, hub) => (await import('./doors')).openDoors(code, hub);
 
   private readonly transport: RoomTransport = {
     sendHost: (room) => this.toHosts(room.code, 'host:state', room.hostView()),
@@ -154,13 +165,15 @@ export class Hub {
     return { code: room.code, quizTitle: room.quizTitle };
   }
 
-  connect(user: PublicUser | null, deliver: (event: string, payload?: unknown) => void): HubClient {
+  connect(user: PublicUser | null, deliver: (event: string, payload?: unknown) => void, link: LinkInfo = {}): HubClient {
     const client: HubClient = {
       id: randomUuid(),
       user,
       joinLimiter: new RateLimiter(15, 60_000),
       reactLimiter: new RateLimiter(6, 5_000),
       presenceLimiter: new RateLimiter(40, 10_000),
+      slowLink: link.slowLink ?? false,
+      lagMs: link.lagMs ?? (() => 0),
       deliver,
     };
     this.clients.set(client.id, client);
@@ -199,7 +212,7 @@ export class Hub {
         if (!room) throw new GameError(ERRORS.gameNotFound);
         const previous = this.playerRoom(client);
         if (previous && previous !== room) previous.leave(client.id);
-        const player = room.join({ nickname: input.data.nickname, token: input.data.token, userId: null, socketId: client.id });
+        const player = room.join({ nickname: input.data.nickname, token: input.data.token, userId: null, socketId: client.id, slowLink: client.slowLink });
         client.player = { code: room.code, playerId: player.id };
         client.deliver('game:state', room.playerView(player));
         return { ok: true, playerId: player.id, token: player.token };
@@ -209,7 +222,7 @@ export class Hub {
         const room = this.playerRoom(client);
         if (!room || !client.player) throw new GameError(ERRORS.gameNotFound);
         const input = answerPayloadSchema.parse(payload);
-        room.answer(client.player.playerId, input.questionIndex, input.answer);
+        room.answer(client.player.playerId, input.questionIndex, input.answer, client.lagMs());
         return { ok: true };
       }
 

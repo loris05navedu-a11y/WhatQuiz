@@ -54,6 +54,8 @@ public class MainActivity extends Activity {
     private String siteUrl;
     private ValueCallback<Uri[]> pendingChooser;
     private boolean pinRequested;
+    /** Une partie tourne sur cet appareil (le professeur l'anime depuis l'application). */
+    private boolean hosting;
 
     /** Écran éteint (bouton marche/arrêt ou mise en veille) : signalé avant même la mise en pause. */
     private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
@@ -227,13 +229,14 @@ public class MainActivity extends Activity {
             return MainActivity.this.isInMultiWindowMode();
         }
 
-        /** Le professeur anime une partie depuis l'application : l'écran reste allumé (la partie tourne sur cet appareil). */
+        /**
+         * Le professeur anime une partie depuis l'application (elle tourne sur cet appareil) : écran allumé, service de
+         * premier plan et moteur de la page prioritaire, pour que la partie continue même si l'application passe en
+         * arrière-plan.
+         */
         @JavascriptInterface
         public void keepAwake(boolean on) {
-            runOnUiThread(() -> {
-                if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            });
+            runOnUiThread(() -> setHosting(on));
         }
 
         /** Partie surveillée en cours : écran toujours allumé (pas de fausse sortie par mise en veille) et captures bloquées. */
@@ -245,6 +248,19 @@ public class MainActivity extends Activity {
                 else getWindow().clearFlags(flags);
             });
         }
+    }
+
+    private void setHosting(boolean on) {
+        if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (on == hosting) return;
+        hosting = on;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && web != null) {
+            // Moteur de la page gardé prioritaire même quand l'application n'est plus à l'écran.
+            web.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, !on);
+        }
+        if (on) HostService.start(this);
+        else HostService.stop(this);
     }
 
     private void setPinned(boolean on) {
@@ -354,6 +370,7 @@ public class MainActivity extends Activity {
             // Déjà désinscrit.
         }
         if (pinRequested) setPinned(false);
+        if (hosting) HostService.stop(this);
         web.destroy();
         super.onDestroy();
     }

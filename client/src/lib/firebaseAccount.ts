@@ -60,6 +60,32 @@ export function loadFirestore() {
   return store;
 }
 
+/**
+ * Écriture de champs d'un document par l'API REST de Firestore, envoyée de façon à survivre à la fermeture de la page
+ * (sendBeacon, sinon fetch « keepalive » ; corps en text/plain comme le SDK, sans requête préalable CORS).
+ * Sert au relais des parties : prévenir le professeur qu'un élève a fermé ou quitté la page.
+ */
+export function writeDocumentOnUnload(path: string, fields: Record<string, string>): void {
+  const root = `projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents`;
+  const origin = EMULATOR_HOST ? `http://${EMULATOR_HOST}:8080` : 'https://firestore.googleapis.com';
+  const url = `${origin}/v1/${root}:commit?key=${encodeURIComponent(FIREBASE_CONFIG.apiKey)}`;
+  // Seuls ces champs sont écrits : le reste du document est conservé.
+  const body = JSON.stringify({
+    writes: [
+      {
+        update: { name: `${root}/${path}`, fields: Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, { stringValue: value }])) },
+        updateMask: { fieldPaths: Object.keys(fields) },
+      },
+    ],
+  });
+  try {
+    if (typeof navigator.sendBeacon === 'function' && navigator.sendBeacon(url, body)) return;
+    void fetch(url, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'text/plain' }, body }).catch(() => undefined);
+  } catch {
+    // Envoi refusé par le navigateur : le professeur constatera le silence un peu plus tard.
+  }
+}
+
 /** Identifiant Firebase du compte connecté dans ce navigateur (null : aucun). */
 export async function firebaseUid(): Promise<string | null> {
   const { auth } = await preloadFirebase();

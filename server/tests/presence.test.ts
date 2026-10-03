@@ -106,6 +106,66 @@ describe('surveillance de présence', () => {
     room.dispose();
   });
 
+  it('laisse plus de temps aux élèves reliés par le relais en ligne (signe de vie toutes les 15 s)', () => {
+    const { room } = createRoom();
+    const lea = room.join({ nickname: 'Léa', userId: null, socketId: 's1', slowLink: true });
+    room.join({ nickname: 'Tom', userId: null, socketId: 's2' });
+    room.start();
+    for (let t = 1; t <= 40; t++) {
+      mock.timers.tick(1_000);
+      if (t % 15 === 0) room.reportPresence(lea.id, { s: 'beat', v: true });
+    }
+    // Léa (relais) envoie un signe de vie toutes les 15 s : présente. Tom (liaison directe) est muet : injoignable.
+    assert.equal(presenceOf(room, 'Léa').state, 'present');
+    assert.equal(presenceOf(room, 'Tom').state, 'lost');
+    mock.timers.tick(50_000);
+    assert.equal(presenceOf(room, 'Léa').state, 'lost');
+    assert.equal(presenceOf(room, 'Léa').reason, 'silent');
+    // Reprise sur une liaison directe : le délai court s'applique de nouveau.
+    room.join({ nickname: 'Léa', token: lea.token, userId: null, socketId: 's3' });
+    room.reportPresence(lea.id, { s: 'beat', v: true });
+    assert.equal(presenceOf(room, 'Léa').state, 'present');
+    mock.timers.tick(8_000);
+    assert.equal(presenceOf(room, 'Léa').state, 'lost');
+    room.dispose();
+  });
+
+  it('déduit le délai d’acheminement (borné à 2 s) du temps de réponse', () => {
+    const responses = new Map<string, number>();
+    const room = new GameRoom({
+      id: 'g2',
+      code: '123456',
+      hostUserId: 1,
+      snapshot: { quizId: 1, title: 'T', questions: SAMPLE_QUIZ.questions },
+      settings: { ...DEFAULT_GAME_SETTINGS },
+      isTest: false,
+      store: {
+        markStarted() {},
+        addPlayer() {},
+        markKicked() {},
+        saveAnswer: (answer) => void responses.set(answer.playerId, answer.responseMs),
+        abort() {},
+        setResultsVisible() {},
+        finish() {},
+      },
+      transport: silent,
+    });
+    const lea = room.join({ nickname: 'Léa', userId: null, socketId: 's1', slowLink: true });
+    const tom = room.join({ nickname: 'Tom', userId: null, socketId: 's2' });
+    const max = room.join({ nickname: 'Max', userId: null, socketId: 's3' });
+    room.applyHostAction({ type: 'start' });
+    room.applyHostAction({ type: 'startQuestion' });
+    mock.timers.tick(3_000);
+    const answer = { kind: 'choice' as const, choices: [1] };
+    room.answer(lea.id, 0, answer, 900);
+    room.answer(tom.id, 0, answer);
+    room.answer(max.id, 0, answer, 60_000);
+    assert.equal(responses.get(tom.id), 3_000);
+    assert.equal(responses.get(lea.id), 2_100);
+    assert.equal(responses.get(max.id), 1_000, 'compensation bornée');
+    room.dispose();
+  });
+
   it('signale une déconnexion et la reconnexion', () => {
     const { room } = createRoom();
     const alice = room.join({ nickname: 'Alice', userId: null, socketId: 's1' });

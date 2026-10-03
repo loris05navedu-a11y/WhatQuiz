@@ -4,6 +4,8 @@ import {
   PRESENCE_LOG_LIMIT,
   PRESENCE_SEVERITY,
   PRESENCE_SILENT_MS,
+  PRESENCE_SILENT_RELAY_MS,
+  RELAY_BEAT_MS,
   stateForReason,
   type AwayReason,
   type PresenceEvent,
@@ -76,6 +78,8 @@ export interface RoomPlayer {
   answers: Map<number, RecordedAnswer>;
   disconnectTimer: Timer | null;
   presence: PlayerPresence;
+  /** Relié par le relais en ligne : signes de vie espacés (voir RELAY_BEAT_MS). */
+  slowLink: boolean;
 }
 
 /** Présence d'un élève, tenue par l'hôte : dernier signe de vie reçu (horloge de l'hôte). */
@@ -85,6 +89,8 @@ interface PlayerPresence extends PresenceInfo {
 
 /** Fréquence de vérification des signes de vie pendant la partie. */
 const PRESENCE_CHECK_MS = 1_000;
+/** Délai d'acheminement déduit au plus du temps de réponse (liaisons lentes). */
+const MAX_LAG_COMPENSATION_MS = 2_000;
 /** Événements de surveillance envoyés à l'écran du professeur (le journal complet est enregistré à la fin). */
 const PRESENCE_LOG_IN_VIEW = 80;
 
@@ -191,11 +197,14 @@ export class GameRoom {
 
   /* ───────────── Joueurs ───────────── */
 
-  join(input: { nickname: string; token?: string; userId: number | null; socketId: string }): RoomPlayer {
+  join(input: { nickname: string; token?: string; userId: number | null; socketId: string; slowLink?: boolean }): RoomPlayer {
     this.touch();
     if (input.token && this.kickedTokens.has(input.token)) throw new GameError(ERRORS.kicked);
     const existing = input.token ? this.activePlayers.find((p) => p.token === input.token) : undefined;
-    if (existing) return this.reconnect(existing, input.socketId);
+    if (existing) {
+      existing.slowLink = input.slowLink ?? false;
+      return this.reconnect(existing, input.socketId);
+    }
 
     if (this.phase === 'ended') throw new GameError(ERRORS.gameEnded);
     if (this.locked) throw new GameError(ERRORS.gameLocked);
@@ -205,6 +214,7 @@ export class GameRoom {
     if (this.isNicknameTaken(nickname)) throw new GameError(ERRORS.nicknameTaken);
 
     const player = this.addPlayer({ nickname, userId: input.userId, isBot: false, socketId: input.socketId });
+    player.slowLink = input.slowLink ?? false;
     if (this.autoStartOnJoin && this.phase === 'lobby') this.start();
     return player;
   }
@@ -258,6 +268,7 @@ export class GameRoom {
       answers: new Map(),
       disconnectTimer: null,
       presence: { state: 'present', reason: null, since: null, exits: 0, awayMs: 0, app: false, pinned: false, lastBeat: Date.now() },
+      slowLink: false,
     };
     this.players.set(player.id, player);
     this.store?.addPlayer({ id: player.id, gameId: this.id, nickname: player.nickname, userId: player.userId });
@@ -288,7 +299,8 @@ export class GameRoom {
 
   /* ───────────── Réponses ───────────── */
 
-  answer(playerId: string, questionIndex: number, answer: SubmittedAnswer): void {
+  /** `lagMs` : délai d'acheminement estimé de la liaison de l'élève, déduit de son temps de réponse. */
+  answer(playerId: string, questionIndex: number, answer: SubmittedAnswer, lagMs = 0): void {
     const player = this.players.get(playerId);
     const question = this.currentQuestion;
     if (!player || !question) throw new GameError(ERRORS.notAccepting);
@@ -302,7 +314,8 @@ export class GameRoom {
     const accepted = definition.accept(answer, question, this.layouts[questionIndex]);
     if (!accepted) throw new GameError(ERRORS.invalidInput);
 
-    const responseMs = Math.max(0, now - this.openedAt - this.pausedTotal);
+    const lag = Math.min(MAX_LAG_COMPENSATION_MS, Math.max(0, Number.isFinite(lagMs) ? lagMs : 0));
+    const responseMs = Math.max(0, now - this.openedAt - this.pausedTotal - lag);
     const grade = definition.grade(question, accepted);
     const points = pointsForGrade(grade, {
       basePoints: question.points,
@@ -611,7 +624,7 @@ export class GameRoom {
       presence.state = state;
       presence.reason = reason;
       // Silence : l'absence a commencé après le dernier signe de vie reçu, pas au moment où on la constate.
-      presence.since = reason === 'silent' ? Math.min(now, presence.lastBeat + PRESENCE_BEAT_MS) : now;
+      presence.since = reason === 'silent' ? Math.min(now, presence.lastBeat + (player.slowLink ? RELAY_BEAT_MS : PRESENCE_BEAT_MS)) : now;
       if (!this.watching) return this.markDirty({ host: true });
       presence.exits += 1;
     } else if (PRESENCE_SEVERITY[state] > PRESENCE_SEVERITY[presence.state]) {
@@ -690,7 +703,8 @@ export class GameRoom {
     const now = Date.now();
     for (const player of this.activePlayers) {
       if (player.isBot || !player.socketId) continue;
-      if (now - player.presence.lastBeat > PRESENCE_SILENT_MS) this.markAway(player, 'silent', now);
+      const limit = player.slowLink ? PRESENCE_SILENT_RELAY_MS : PRESENCE_SILENT_MS;
+      if (now - player.presence.lastBeat > limit) this.markAway(player, 'silent', now);
     }
   }
 

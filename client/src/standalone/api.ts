@@ -387,7 +387,7 @@ function deleteGame(d: LocalData, gameId: string): void {
   markDirty('game', gameId);
 }
 
-/** Vérifie un code : partie hébergée ici, sinon sur l'appareil d'un professeur (pair-à-pair). */
+/** Vérifie un code : partie hébergée ici, sinon sur l'appareil d'un professeur (en direct ou par le relais). */
 async function checkCode(code: string): Promise<{ code: string; quizTitle: string }> {
   if (!/^\d{6}$/.test(code)) throw notFound(ERRORS.gameNotFound);
   if (hub.hasRoom(code)) {
@@ -397,7 +397,7 @@ async function checkCode(code: string): Promise<{ code: string; quizTitle: strin
       throw new ApiError(410, (error as Error).message);
     }
   }
-  const { probeGame } = await import('./peer');
+  const { probeGame } = await import('./link');
   return probeGame(code);
 }
 

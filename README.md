@@ -8,7 +8,8 @@ Le projet est pensé pour être **installé, lancé et développé depuis une ta
 aucune dépendance native à compiler, une seule commande pour démarrer, un seul port à ouvrir.
 
 Il peut aussi être publié **sans serveur** sur GitHub Pages : la partie tourne alors dans le navigateur du
-professeur et les élèves s'y connectent en pair-à-pair (voir [Publier le site sur GitHub Pages](#publier-le-site-sur-github-pages)).
+professeur (ou l'application Android) et les élèves s'y connectent depuis n'importe quel réseau, en direct ou par
+un relais en ligne (voir [Publier le site sur GitHub Pages](#publier-le-site-sur-github-pages)).
 
 ---
 
@@ -416,7 +417,7 @@ Une partie terminée reste consultable 30 minutes par les élèves, ses résulta
 ### Surveillance des sorties (anti-triche)
 
 Activée par défaut au lancement d'une partie (« Me prévenir quand un élève quitte la partie »), elle
-fonctionne de la même façon avec le serveur Termux et en mode GitHub Pages (pair-à-pair). Seuls les
+fonctionne de la même façon avec le serveur Termux et en mode GitHub Pages (en direct ou relayé). Seuls les
 élèves sont surveillés, jamais le professeur, et ils en sont informés dans la salle d'attente.
 
 Trois sources de détection, combinées :
@@ -551,6 +552,9 @@ s'ouvre directement sur le site.
 - Les nouveautés du site arrivent sans réinstaller l'APK : il suffit de redéployer GitHub Pages.
 - Depuis la version 1.2, l'APK transmet les signaux du système à la surveillance des sorties (voir
   « Surveillance des sorties ») : réinstallez-la sur les appareils des élèves pour en profiter.
+- Version 1.3.0 : quand le professeur anime une partie depuis l'application, elle continue même si l'application
+  passe en arrière-plan (service de premier plan, notification « Partie WhatQuiz en cours »). Le cache de la page
+  est vidé à chaque lancement et le site se met à jour tout seul (numéro de version en bas de la fenêtre du nuage).
 - Seul le trafic HTTPS est autorisé.
 
 Installer l'APK : copiez `WhatQuiz.apk` sur le téléphone, ouvrez-le et autorisez l'installation
@@ -587,8 +591,9 @@ pour les liens profonds (`/join`, `/dashboard`…) et le publie.
 ### Fonctionnement sans serveur
 
 ```
-Élève (téléphone)  ◄── WebRTC, en direct ──►  Professeur (onglet de la partie)
-          └──── mise en relation : serveur public PeerJS ────┘
+Élève (site ou appli)  ◄── 1. en direct (WebRTC) ─────────────►  Professeur (site ou appli :
+                       ◄── 2. sinon : relais en ligne chiffré ──►  la partie tourne ici)
+                                 (Firestore, projet Firebase)
 ```
 
 - **Comptes et quiz sont sauvegardés en ligne et synchronisés** entre le site et l'application Android (voir
@@ -597,9 +602,22 @@ pour les liens profonds (`/join`, `/dashboard`…) et le publie.
 - **La partie tourne dans l'onglet du professeur** : c'est lui qui fait autorité (minuteur, score, bonnes
   réponses, qui ne quittent jamais son appareil). **Gardez cette page ouverte** pendant la partie :
   la fermer ou la recharger met fin à la partie. L'écran reste allumé automatiquement quand le navigateur le permet.
-- **Les élèves se connectent en pair-à-pair** (WebRTC, bibliothèque PeerJS). Le service public gratuit de PeerJS
-  ne sert qu'à la mise en relation ; les réponses passent directement d'appareil à appareil. Une connexion
-  Internet est nécessaire au lancement de la partie et à l'arrivée de chaque élève.
+- **Les élèves se connectent depuis n'importe quel réseau**, quelle que soit la plateforme (site ou application,
+  pour le professeur comme pour les élèves) :
+  1. **en direct** (WebRTC, bibliothèque PeerJS) quand les deux appareils peuvent se joindre (souvent : même Wi-Fi) :
+     le service public de PeerJS ne sert qu'à la mise en relation, les messages vont d'appareil à appareil ;
+  2. sinon **par le relais en ligne** (données mobiles, réseaux différents, Wi-Fi d'établissement qui isole les
+     appareils, pare-feu) : les messages passent par Firestore, **chiffrés de bout en bout** (ECDH P-256 + AES-GCM ;
+     Firebase ne voit que des données illisibles). Le relais démarre tout seul si la liaison directe ne répond pas en
+     2,5 s ; l'élève n'a rien à faire. Les fichiers des questions (images, sons, vidéos) passent aussi, par morceaux.
+  Une connexion Internet est nécessaire au lancement de la partie et à l'arrivée de chaque élève.
+- **Relais : coût et limites.** Chaque message relayé est une écriture Firestore (offre gratuite : 20 000 écritures et
+  50 000 lectures par jour). Pour économiser, un élève relayé envoie son signe de vie de surveillance toutes les 15 s
+  au lieu de 2 s (un élève muet est déclaré injoignable après 45 s au lieu de 6 s ; une sortie de l'application ou
+  de l'onglet reste signalée aussitôt, une page fermée aussi). Une partie de 30 élèves tous relayés et 20 questions
+  représente environ 5 000 écritures (et autant de lectures) : quelques parties entièrement relayées par jour. Le délai d'acheminement mesuré (2 s au plus) est déduit du temps de réponse :
+  un élève relayé n'est pas pénalisé au bonus de rapidité. Si le relais est indisponible (règles Firestore non
+  publiées, par exemple), l'écran de la salle d'attente du professeur l'indique.
 - Un élève qui perd le réseau ou recharge sa page reprend la partie là où il en était.
 - Les images sont intégrées au quiz (réduites à 800 px) au lieu d'être envoyées sur un serveur.
 - Un élève connecté à un compte élève sur son appareil retrouve ses parties dans « Mon espace ».
@@ -634,14 +652,21 @@ passe** ouvrent le compte sur le site et dans l'application, sur n'importe quel 
 - Changer son mot de passe dans WhatQuiz le change aussi en ligne ; supprimer son compte efface aussi sa sauvegarde
   en ligne (le compte Firebase/Furious-Tube lui-même est conservé).
 - **Lancer une partie depuis l'application** avec un compte professeur : les élèves la rejoignent **sans compte**,
-  sur le site (`/join` ou QR code) ou dans l'application. Pendant la partie, l'écran du téléphone du professeur
-  reste allumé (APK 1.2.1) ; gardez l'application ouverte, la partie tourne sur cet appareil.
+  sur le site (`/join` ou QR code) ou dans l'application, depuis n'importe quel réseau (voir le relais ci-dessus).
+  Pendant la partie, l'écran du professeur reste allumé et, depuis l'APK 1.3.0, la partie continue même si
+  l'application passe en arrière-plan (notification « Partie WhatQuiz en cours ») : ne la fermez pas avant la fin.
 
-**À faire une fois dans la console Firebase** (sinon la pastille indique « règles Firestore non publiées ») :
-console.firebase.google.com → projet *furioustube-9d498* → **Firestore Database** → onglet **Règles** → copie-colle
-le bloc ci-dessous en entier (il remplace tout le contenu actuel) → **Publier**. Ces règles réservent les données
-`whatquiz/{uid}` à leur propriétaire : personne d'autre, ni un autre compte ni un visiteur, ne peut les lire ou les
-modifier. Elles gardent aussi la règle publique pour le fil de vidéos Furious-Tube.
+**À faire dans la console Firebase** (sinon la pastille indique « règles Firestore non publiées », et la salle
+d'attente « relais en ligne désactivé ») : console.firebase.google.com → projet *furioustube-9d498* → **Firestore
+Database** → onglet **Règles** → copie-colle le bloc ci-dessous en entier (il remplace tout le contenu actuel) →
+**Publier**. À refaire si vous aviez publié une version précédente sans `whatquizRelay`.
+
+- `whatquiz/{uid}` : sauvegarde des comptes, réservée à son propriétaire (ni un autre compte ni un visiteur ne peut
+  la lire ou la modifier).
+- `whatquizRelay/{code}` : relais des parties en direct. Les élèves n'ont pas de compte : l'accès est ouvert, mais
+  limité à des documents de forme stricte, au contenu chiffré ; une salle ne peut pas être reprise pendant 12 h et
+  on ne peut ni lister les salles, ni lister les boîtes « professeur → élève », ni rien supprimer.
+- `bins` : la règle publique du fil de vidéos Furious-Tube, inchangée.
 
 ```
 rules_version = '2';
@@ -658,12 +683,50 @@ service cloud.firestore {
     match /whatquiz/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
+
+    // WhatQuiz : relais des parties en direct, quand l'appareil d'un élève ne peut pas joindre directement celui
+    // du professeur (réseaux différents, données mobiles…). Messages chiffrés de bout en bout, sans donnée de compte.
+    match /whatquizRelay/{code} {
+      function validRoom() {
+        let d = request.resource.data;
+        return code.matches('[0-9]{6}') && d.keys().hasOnly(['k', 'v', 'at']) && d.k is string && d.k.size() <= 120
+          && d.v is int && d.at == request.time;
+      }
+      allow get: if true;
+      allow create: if validRoom();
+      // Un code se libère 12 h après le lancement de sa partie.
+      allow update: if validRoom() && resource.data.at < request.time - duration.value(12, 'h');
+
+      match /live/{doc} {
+        allow get: if true;
+        allow create, update: if doc == 'host' && request.resource.data.keys().hasOnly(['at']) && request.resource.data.at == request.time;
+      }
+      match /up/{conn} {
+        // k : clé publique de l'élève ; d : messages chiffrés ; x : « au revoir » chiffré (page fermée).
+        function validUp() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['k', 'd', 'x']) && d.k is string && d.k.size() <= 120 && d.d is string && d.d.size() <= 1000000
+            && (!('x' in d) || (d.x is string && d.x.size() <= 2000));
+        }
+        allow get, list: if true;
+        allow create: if validUp();
+        allow update: if validUp() && request.resource.data.k == resource.data.k;
+      }
+      match /down/{box} {
+        allow get: if true;
+        allow create, update: if request.resource.data.keys().hasOnly(['d']) && request.resource.data.d is string
+          && request.resource.data.d.size() <= 1000000;
+      }
+    }
   }
 }
 ```
 
-Code : `client/src/standalone/cloud.ts` (synchronisation), `client/src/components/CloudStatus.tsx` (pastille).
-Tests : émulateurs Firebase (Auth + Firestore) avec ces règles, et scénario site ↔ application dans Chromium.
+Code : `client/src/standalone/cloud.ts` (synchronisation), `client/src/components/CloudStatus.tsx` (pastille),
+`client/src/standalone/relay.ts` et `relayChannel.ts` (relais), `link.ts` (choix direct/relais), `doors.ts`
+(ouverture de la partie). Tests : émulateurs Firebase (Auth + Firestore) avec ces règles, scénarios dans Chromium
+(site ↔ application, classe mixte : élèves en direct et élève relayé, rechargement, grande image), et
+`server/tests/relay.test.ts` (versions manquées, gros messages, chiffrement).
 
 Compilation manuelle équivalente :
 
@@ -674,7 +737,8 @@ cp dist/client/index.html dist/client/404.html
 
 Code : `client/src/standalone/` (`db.ts` données du navigateur, `api.ts` mêmes routes que le serveur,
 `hub.ts` moteur de partie de `server/src/game` exécuté dans le navigateur, `peer.ts` liaison WebRTC,
-`socket.ts` remplaçant de Socket.IO pour les écrans de jeu). Test : `server/tests/standalone.test.ts`.
+`relay.ts` relais en ligne, `link.ts` liaison de l'élève (directe ou relayée), `socket.ts` remplaçant de Socket.IO
+pour les écrans de jeu). Test : `server/tests/standalone.test.ts`.
 
 ### Variante : relier le site à un serveur WhatQuiz (facultatif)
 
@@ -762,3 +826,4 @@ suffisant pour plusieurs classes simultanées). Sauvegardez régulièrement le d
 | `EADDRINUSE` | Le port est occupé : changez `PORT` dans `.env`. |
 | `npm start` indique « Frontend introuvable » | Lancez `npm run build` avant. |
 | La partie s'arrête quand l'écran de la tablette s'éteint | `termux-wake-lock`, et désactivez l'optimisation de batterie pour Termux. |
+| Site GitHub Pages / application : « La partie ne répond pas » ou « Code de partie incorrect » | Vérifiez le code, et que l'écran de la partie est ouvert chez le professeur (site ou application). Si la salle d'attente du professeur affiche « relais en ligne désactivé », publiez les règles Firestore ci-dessus : sans relais, seuls les élèves qui peuvent joindre directement l'appareil du professeur (souvent : même Wi-Fi) entrent. |
