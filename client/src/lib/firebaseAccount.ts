@@ -155,6 +155,16 @@ export async function connectOnlineAccount(email: string, password: string, disp
   }
 }
 
+/** E-mail de réinitialisation du mot de passe du compte en ligne. */
+export async function sendPasswordReset(email: string): Promise<void> {
+  const { auth, sdk } = await preloadFirebase();
+  try {
+    await sdk.sendPasswordResetEmail(auth, email.trim());
+  } catch (error) {
+    throw readable(error);
+  }
+}
+
 /** Mot de passe changé sur WhatQuiz : le compte en ligne suit (ajouté s'il n'en avait pas, ex. compte Google). */
 export async function changeOnlinePassword(currentPassword: string, newPassword: string): Promise<void> {
   const { auth, sdk } = await preloadFirebase();

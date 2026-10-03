@@ -3,7 +3,7 @@ import { authApi } from '../api/endpoints';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { STANDALONE } from '../lib/backend';
-import { connectOnlineAccount, signInWithEmail } from '../lib/firebaseAccount';
+import { connectOnlineAccount, sendPasswordReset, signInWithEmail } from '../lib/firebaseAccount';
 import { formatDateTime } from '../lib/format';
 import { cloudStatus, onCloudStatus, type CloudStatus } from '../standalone/cloudStatus';
 
@@ -56,6 +56,8 @@ function CloudDialog({ status, onClose }: { status: CloudStatus; onClose: () => 
   const toast = useToast();
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const [onlinePassword, setOnlinePassword] = useState('');
   const needsPassword = status.state === 'off' || status.reconnect;
 
   /** Compte local seulement, ou session en ligne expirée : on (re)connecte le compte en ligne avec le mot de passe. */
@@ -66,13 +68,20 @@ function CloudDialog({ status, onClose }: { status: CloudStatus; onClose: () => 
     try {
       const { uid } = await authApi.cloud();
       if (uid) {
-        const profile = await signInWithEmail(user.email, password);
+        const profile = await signInWithEmail(user.email, conflict ? onlinePassword : password);
         if (profile.uid !== uid) throw new Error('Ce mot de passe ouvre un autre compte en ligne');
         resumeCloudSync();
+      } else if (conflict) {
+        const profile = await signInWithEmail(user.email, onlinePassword);
+        const { user: linked } = await authApi.linkCloud(profile.uid);
+        setUser(linked);
       } else {
         const profile = await connectOnlineAccount(user.email, password, user.displayName);
-        if (!profile) throw new Error('Cette adresse est déjà utilisée par un compte en ligne avec un autre mot de passe');
-        if (profile.email.toLowerCase() !== user.email.toLowerCase()) throw new Error('Le mot de passe n'est pas valide pour ce compte');
+        if (!profile) {
+          setConflict(true);
+          toast.error('Un compte en ligne existe déjà avec cette adresse, mais avec un autre mot de passe.');
+          return;
+        }
         const { user: linked } = await authApi.linkCloud(profile.uid);
         setUser(linked);
       }
@@ -107,7 +116,36 @@ function CloudDialog({ status, onClose }: { status: CloudStatus; onClose: () => 
               onChange={(e) => setPassword(e.target.value)}
               required
             />
-            <Button type="submit" variant="primary" icon="cloud" loading={busy} disabled={!password}>
+            {conflict && (
+              <>
+                <p className="small">
+                  Cette adresse a déjà un compte en ligne (par exemple Furious-Tube) avec un mot de passe différent. Saisissez le mot de passe de ce compte
+                  en ligne pour le relier, ou réinitialisez-le par e-mail.
+                </p>
+                <TextField
+                  label="Mot de passe du compte en ligne"
+                  type="password"
+                  autoComplete="off"
+                  value={onlinePassword}
+                  onChange={(e) => setOnlinePassword(e.target.value)}
+                  required
+                />
+                <Button
+                  type="button"
+                  icon="send"
+                  onClick={() =>
+                    user &&
+                    sendPasswordReset(user.email).then(
+                      () => toast.success('E-mail de réinitialisation envoyé'),
+                      (e: unknown) => toast.error(e instanceof Error ? e.message : 'Envoi impossible'),
+                    )
+                  }
+                >
+                  Mot de passe oublié : recevoir un e-mail
+                </Button>
+              </>
+            )}
+            <Button type="submit" variant="primary" icon="cloud" loading={busy} disabled={!password || (conflict && !onlinePassword)}>
               {status.reconnect ? 'Se reconnecter' : 'Activer la sauvegarde en ligne'}
             </Button>
           </form>
