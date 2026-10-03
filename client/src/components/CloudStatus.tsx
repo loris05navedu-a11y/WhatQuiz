@@ -72,6 +72,7 @@ function CloudDialog({ status, onClose }: { status: CloudStatus; onClose: () => 
       } else {
         const profile = await connectOnlineAccount(user.email, password, user.displayName);
         if (!profile) throw new Error('Cette adresse est déjà utilisée par un compte en ligne avec un autre mot de passe');
+        if (profile.email.toLowerCase() !== user.email.toLowerCase()) throw new Error('Le mot de passe n'est pas valide pour ce compte');
         const { user: linked } = await authApi.linkCloud(profile.uid);
         setUser(linked);
       }
