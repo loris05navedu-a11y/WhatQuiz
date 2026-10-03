@@ -154,6 +154,9 @@ function CloudDialog({ status, onClose }: { status: CloudStatus; onClose: () => 
             Synchroniser maintenant
           </Button>
         )}
+        <p className="muted small" style={{ textAlign: 'center' }}>
+          Version {__BUILD_VERSION__}
+        </p>
       </div>
     </Modal>
   );
