@@ -1,3 +1,4 @@
+import { startAutoUpdate } from './lib/autoUpdate';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
@@ -22,3 +23,5 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL }).catch(() => undefined);
   });
 }
+
+startAutoUpdate();

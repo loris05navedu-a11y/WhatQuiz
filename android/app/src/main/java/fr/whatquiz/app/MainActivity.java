@@ -90,6 +90,9 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
 
+        // Toujours repartir de la dernière version publiée du site (pas de pages gardées en cache).
+        web.clearCache(true);
+
         if (savedInstanceState != null && web.restoreState(savedInstanceState) != null) return;
         web.loadUrl(siteUrl);
     }
